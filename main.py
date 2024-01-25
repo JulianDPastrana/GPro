@@ -36,16 +36,23 @@ Y = np.random.normal(loc, scale)
 # PLOT DATA
 
 
-def plot_distribution(X, Y, loc, scale, title_for_save=None):
+def plot_distribution(X, Y, loc, scale, inducing_variables=None, title_for_save=None):
     plt.figure(figsize=(15, 5))
     x = X.squeeze()
     for k in range(1, 4):
         lb = (loc - k * scale).squeeze()
         ub = (loc + k * scale).squeeze()
-        plt.fill_between(x, lb, ub, color="C0", alpha=0.3)
+        plt.fill_between(x, lb, ub, color="C0", alpha=0.3, label=f"$\pm {k}\sigma$")
 
-    plt.plot(X, loc, color="C0")
+    plt.plot(X, loc, color="C0", label="Mean function")
     plt.scatter(X, Y, color="gray", alpha=0.8)
+
+    if inducing_variables:
+        for i, (iv, color) in enumerate(zip(inducing_variables, ["green", "orange"])):
+            plt.scatter(iv.Z, np.zeros_like(iv.Z), marker='^', label=f"$Z_{i+1}$")
+
+    plt.legend()
+
     if title_for_save:
         plt.title(title_for_save)
         plt.savefig(f"./train_step/{title_for_save}.png")
@@ -62,14 +69,6 @@ likelihood = gpf.likelihoods.HeteroskedasticTFPConditional(
 
 print(f"Likelihood's expected latent_dim: {likelihood.latent_dim}")
 
-# Kernel
-kernel = gpf.kernels.SeparateIndependent(
-    [
-        gpf.kernels.SquaredExponential(),  # This is k1, the kernel of f1
-        gpf.kernels.SquaredExponential(),  # this is k2, the kernel of f2
-    ]
-)
-
 kernel = gpf.kernels.LinearCoregionalization(
     [
         gpf.kernels.SquaredExponential(),  # This is k1, the kernel of f1
@@ -81,7 +80,7 @@ kernel = gpf.kernels.LinearCoregionalization(
 # The number of kernels contained in the kernel must be the same as likelihood.latent_dim
 
 # Inducing Points
-M = 20  # Number of inducing variables for each f_i
+M = 5  # Number of inducing variables for each f_i
 
 # Initial inducing points position Z
 Z = np.linspace(X.min(), X.max(), M)[:, None]  # Z must be of shape [M, 1]
@@ -139,7 +138,9 @@ for epoch in pbar:
         Ymean, Yvar = model.predict_y(X)
         Ymean = Ymean.numpy().squeeze()
         Ystd = tf.sqrt(Yvar).numpy().squeeze()
-        plot_distribution(X, Y, Ymean, Ystd, f"Epoch {epoch} - " + loss_text)
+        plot_distribution(X, Y, Ymean, Ystd,
+                          model.inducing_variable.inducing_variable_list,
+                          f"Epoch {epoch} - " + loss_text)
 
 
 # SAVE THINGS
