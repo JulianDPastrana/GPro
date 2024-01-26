@@ -1,40 +1,71 @@
 #!/home/usuario/Documents/Gpro/gpvenv/bin/python3
+from typing import Any, Callable
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import gpflow as gpf
 import tensorflow as tf
 import tensorflow_probability as tfp
+from gpflow.likelihoods import MultiLatentTFPConditional
 from tqdm import trange
 from gpflow.utilities import tabulate_module_summary
+from check_shapes import check_shapes, inherit_check_shapes
 from miscellaneous import *
 from datasets import *
 
+
+class HeteroskedasticLikelihood(MultiLatentTFPConditional):
+    
+    def __init__(
+        self,
+        distribution_class,
+        param1_transform,
+        param2_transform,
+        **kwargs: Any,
+    ) -> None:
+        
+        self.param1_transform = param1_transform
+        self.param2_transform = param2_transform
+        @check_shapes(
+            "F: [batch..., 2]",
+        )
+        def conditional_distribution(F) -> tfp.distributions.Distribution:
+            param1 = self.param1_transform(F[..., :1])
+            param2 = self.param2_transform(F[..., 1:])
+            return distribution_class(4, param1, param2)
+
+        super().__init__(
+            latent_dim=2,
+            conditional_distribution=conditional_distribution,
+            **kwargs,
+        )
+
 # DATA COLLECTION
 
-train_data, test_data = lognorm_datset(
-    input_width=1,
-    label_width=1,
-    shift=1,
-    N=1001
-)
+train_data, test_data = streamflow_dataset()
 x_train, y_train = train_data
 x_test, y_test = test_data
 
 # PLOT DATA
 
-def plot_distribution(X, Y, loc, scale, title_for_save=None):
+def plot_distribution(X, Y, Ymean, Yvar, title_for_save=None):
     plt.figure(figsize=(15, 5))
-    x = X.squeeze()
-    for k in range(1, 4):
-        # lb = (loc - k * scale).squeeze()
+    # plt.plot(X, Ymean)
+    # plt.plot(X, Yvar)
+    plt.scatter(X, Y, color="red", alpha=0.8)
+    loc = Ymean
+    scale = np.sqrt(Yvar)
+    # x = X.squeeze()
+    for k in (1, 2):
+        lb = (loc - k * scale).squeeze()
         ub = (loc + k * scale).squeeze()
-        plt.fill_between(x, ub, color="C0", alpha=0.3, label=f"$\pm {k}\sigma$")
+        plt.fill_between(X, lb, ub, color="silver", alpha=1 - 0.05 * k ** 3)
+    plt.plot(X, lb, color="silver")
+    plt.plot(X, ub, color="silver")
+    plt.plot(X, loc, color="black")
+    # plt.xlim(6000, 7000)
 
-    plt.plot(X, loc, color="C0", label="Mean function")
-    plt.scatter(X, Y, color="gray", alpha=0.8)
-
-    plt.legend()
+    # plt.legend()
 
     if title_for_save:
         plt.title(title_for_save)
@@ -45,12 +76,15 @@ def plot_distribution(X, Y, loc, scale, title_for_save=None):
 # BUILD MODEL
 
 # Likelihood
-likelihood = gpf.likelihoods.HeteroskedasticTFPConditional(
-    distribution_class=tfp.distributions.LogNormal,  # Gaussian Likelihood
-    scale_transform=tfp.bijectors.Exp(),  # Exponential Transform
+
+likelihood = HeteroskedasticLikelihood(
+    distribution_class=tfp.distributions.StudentT,
+    param1_transform=tfp.bijectors.Identity(),
+    param2_transform=tfp.bijectors.Exp()
 )
 
 print(f"Likelihood's expected latent_dim: {likelihood.latent_dim}")
+
 
 kernel = gpf.kernels.LinearCoregionalization(
     [
@@ -117,10 +151,13 @@ for epoch in pbar:
     pbar.set_description(loss_text)
     # For every 'log_freq' epochs, print the epoch and plot the predictions against the data
     if epoch % log_freq == 0 and epoch > 0:
+        
         Ymean, Yvar = model.predict_y(x_train)
         Ymean = Ymean.numpy().squeeze()
-        Ystd = tf.sqrt(Yvar).numpy().squeeze()
-        plot_distribution(np.arange(len(y_train)), y_train, Ymean, Ystd,
+        Yvar = Yvar.numpy().squeeze()
+        Ystd = np.sqrt(Yvar)
+        # Psamples = tfp.distributions.LogNormal(Ymean, Ystd).sample(10).numpy().T
+        plot_distribution(range(len(y_train)), y_train, Ymean, Yvar,
                           f"Epoch {epoch} - " + loss_text)
 
 
