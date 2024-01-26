@@ -8,48 +8,31 @@ import tensorflow_probability as tfp
 from tqdm import trange
 from gpflow.utilities import tabulate_module_summary
 from miscellaneous import *
+from datasets import *
 
-# DATA GENERATION
+# DATA COLLECTION
 
-N = 1001
-
-np.random.seed(0)
-tf.random.set_seed(0)
-
-# Build inputs X
-X = np.linspace(0, 4 * np.pi, N)[:, None]  # X must be of shape [N, 1]
-
-# Deterministic functions in place of latent ones
-f1 = np.sin
-f2 = np.cos
-
-# Use transform = exp to ensure positive-only scale values
-transform = np.exp
-
-# Compute loc and scale as functions of input X
-loc = f1(X)
-scale = transform(f2(X))
-
-# Sample outputs Y from Gaussian Likelihood
-Y = np.random.normal(loc, scale)
+train_data, test_data = lognorm_datset(
+    input_width=1,
+    label_width=1,
+    shift=1,
+    N=1001
+)
+x_train, y_train = train_data
+x_test, y_test = test_data
 
 # PLOT DATA
 
-
-def plot_distribution(X, Y, loc, scale, inducing_variables=None, title_for_save=None):
+def plot_distribution(X, Y, loc, scale, title_for_save=None):
     plt.figure(figsize=(15, 5))
     x = X.squeeze()
     for k in range(1, 4):
-        lb = (loc - k * scale).squeeze()
+        # lb = (loc - k * scale).squeeze()
         ub = (loc + k * scale).squeeze()
-        plt.fill_between(x, lb, ub, color="C0", alpha=0.3, label=f"$\pm {k}\sigma$")
+        plt.fill_between(x, ub, color="C0", alpha=0.3, label=f"$\pm {k}\sigma$")
 
     plt.plot(X, loc, color="C0", label="Mean function")
     plt.scatter(X, Y, color="gray", alpha=0.8)
-
-    if inducing_variables:
-        for i, (iv, color) in enumerate(zip(inducing_variables, ["green", "orange"])):
-            plt.scatter(iv.Z, np.zeros_like(iv.Z), marker='^', label=f"$Z_{i+1}$")
 
     plt.legend()
 
@@ -63,7 +46,7 @@ def plot_distribution(X, Y, loc, scale, inducing_variables=None, title_for_save=
 
 # Likelihood
 likelihood = gpf.likelihoods.HeteroskedasticTFPConditional(
-    distribution_class=tfp.distributions.Normal,  # Gaussian Likelihood
+    distribution_class=tfp.distributions.LogNormal,  # Gaussian Likelihood
     scale_transform=tfp.bijectors.Exp(),  # Exponential Transform
 )
 
@@ -80,10 +63,10 @@ kernel = gpf.kernels.LinearCoregionalization(
 # The number of kernels contained in the kernel must be the same as likelihood.latent_dim
 
 # Inducing Points
-M = 5  # Number of inducing variables for each f_i
+M = 20  # Number of inducing variables for each f_i
 
 # Initial inducing points position Z
-Z = np.linspace(X.min(), X.max(), M)[:, None]  # Z must be of shape [M, 1]
+Z = np.linspace(x_train.min(), x_train.max(), M)[:, None]  # Z must be of shape [M, 1]
 
 inducing_variable = gpf.inducing_variables.SeparateIndependentInducingVariables(
     [
@@ -104,8 +87,7 @@ model = gpf.models.SVGP(
 # MODEL OPTIMIZATION
 
 # Build Optimizers (NatGrad + Adam)
-data = (X, Y)
-loss_fn = model.training_loss_closure(data)
+loss_fn = model.training_loss_closure(train_data)
 
 gpf.utilities.set_trainable(model.q_mu, False)
 gpf.utilities.set_trainable(model.q_sqrt, False)
@@ -135,11 +117,10 @@ for epoch in pbar:
     pbar.set_description(loss_text)
     # For every 'log_freq' epochs, print the epoch and plot the predictions against the data
     if epoch % log_freq == 0 and epoch > 0:
-        Ymean, Yvar = model.predict_y(X)
+        Ymean, Yvar = model.predict_y(x_train)
         Ymean = Ymean.numpy().squeeze()
         Ystd = tf.sqrt(Yvar).numpy().squeeze()
-        plot_distribution(X, Y, Ymean, Ystd,
-                          model.inducing_variable.inducing_variable_list,
+        plot_distribution(np.arange(len(y_train)), y_train, Ymean, Ystd,
                           f"Epoch {epoch} - " + loss_text)
 
 
