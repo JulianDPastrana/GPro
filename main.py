@@ -1,7 +1,6 @@
-#!/home/usuario/Documents/Gpro/gpvenv/bin/python3
+#!/home/jumsow/Documents/gp_folder/Gpro/bin/python3
 from typing import Any, Callable
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 import gpflow as gpf
 import tensorflow as tf
@@ -9,7 +8,7 @@ import tensorflow_probability as tfp
 from gpflow.likelihoods import MultiLatentTFPConditional
 from tqdm import trange
 from gpflow.utilities import tabulate_module_summary
-from check_shapes import check_shapes, inherit_check_shapes
+from check_shapes import check_shapes
 from miscellaneous import *
 from datasets import *
 
@@ -32,7 +31,7 @@ class HeteroskedasticLikelihood(MultiLatentTFPConditional):
         def conditional_distribution(F) -> tfp.distributions.Distribution:
             param1 = self.param1_transform(F[..., :1])
             param2 = self.param2_transform(F[..., 1:])
-            return distribution_class(4, param1, param2)
+            return distribution_class(param1, param2)
 
         super().__init__(
             latent_dim=2,
@@ -42,7 +41,7 @@ class HeteroskedasticLikelihood(MultiLatentTFPConditional):
 
 # DATA COLLECTION
 
-train_data, test_data = streamflow_dataset()
+train_data, test_data = toy_datset()
 x_train, y_train = train_data
 x_test, y_test = test_data
 
@@ -50,19 +49,19 @@ x_test, y_test = test_data
 
 def plot_distribution(X, Y, Ymean, Yvar, title_for_save=None):
     plt.figure(figsize=(15, 5))
-    # plt.plot(X, Ymean)
-    # plt.plot(X, Yvar)
-    plt.scatter(X, Y, color="red", alpha=0.8)
+    plt.plot(X, Ymean)
+    plt.plot(X, Yvar)
+    plt.scatter(X, Y, color="k", alpha=0.8)
     loc = Ymean
     scale = np.sqrt(Yvar)
     # x = X.squeeze()
-    for k in (1, 2):
-        lb = (loc - k * scale).squeeze()
-        ub = (loc + k * scale).squeeze()
-        plt.fill_between(X, lb, ub, color="silver", alpha=1 - 0.05 * k ** 3)
-    plt.plot(X, lb, color="silver")
-    plt.plot(X, ub, color="silver")
-    plt.plot(X, loc, color="black")
+    # for k in (1, 2):
+    #     lb = (loc - k * scale).squeeze()
+    #     ub = (loc + k * scale).squeeze()
+    #     plt.fill_between(X, lb, ub, color="silver", alpha=1 - 0.05 * k ** 3)
+    # plt.plot(X, lb, color="silver")
+    # plt.plot(X, ub, color="silver")
+    # plt.plot(X, loc, color="black")
     # plt.xlim(6000, 7000)
 
     # plt.legend()
@@ -78,7 +77,7 @@ def plot_distribution(X, Y, Ymean, Yvar, title_for_save=None):
 # Likelihood
 
 likelihood = HeteroskedasticLikelihood(
-    distribution_class=tfp.distributions.StudentT,
+    distribution_class=tfp.distributions.LogNormal,
     param1_transform=tfp.bijectors.Identity(),
     param2_transform=tfp.bijectors.Exp()
 )

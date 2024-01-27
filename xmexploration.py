@@ -1,5 +1,5 @@
 #!/home/usuario/Documents/Gpro/gpvenv/bin/python3
-# Correction line 148 pydataxm.py file:
+# Correction line 147 pydataxm.py file:
 # data = pd.concat([data, temporal_data], ignore_index=True)
 from pydataxm import *
 import datetime as dt
