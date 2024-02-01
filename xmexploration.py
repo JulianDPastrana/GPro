@@ -20,7 +20,7 @@ df_variable = api_object.request_data(
 pivot_df = df_variable.pivot(index="Date", columns="Name", values="Value")
 
 # Remplace empty values by zero
-pivot_df.fillna(0, inplace=True)
+pivot_df.fillna(0.0, inplace=True)
 
 # Save the pivoted DataFrame to Excel
 pivot_df.to_excel("streamflow_dataset.xlsx")

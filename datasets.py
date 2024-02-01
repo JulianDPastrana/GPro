@@ -3,6 +3,7 @@ import tensorflow as tf
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.preprocessing import MinMaxScaler
 
 
 class WindowGenerator:
@@ -75,11 +76,23 @@ class WindowGenerator:
 def streamflow_dataset(
     input_width=1, label_width=1, shift=1, verbose=True, split_data=0.8
 ):
-    df = pd.read_excel(io="./streamflow_dataset.xlsx", header=0, index_col=0)
-    df = df.iloc[:, 0].to_frame()
+    df = pd.read_excel(
+        io="./streamflow_dataset.xlsx",
+        header=0,
+        index_col=0,
+        # dtype={"B:AV": float}
+    )
+    
     df = df / df.max()
-    df.fillna(0, inplace=True)
-    print(df.describe())
+    df.fillna(0.0, inplace=True)
+    df.replace([np.inf, -np.inf], 0.0, inplace=True)
+    df[df <= 0] = 0.0
+    
+    # scaler = MinMaxScaler((0, 100))
+    # df[df.columns] = scaler.fit_transform(df)
+    
+    print(df.describe().T)
+    print(df.info())
     column_indices = {name: i for i, name in enumerate(df.columns)}
 
     N = len(df)
@@ -94,7 +107,7 @@ def streamflow_dataset(
         print(window)
         print(f"Num train: {threshold}\n" f"Num test: {N - threshold}\n")
 
-    return train_data, test_data
+    return train_data, test_data, df.columns
 
 
 def toy_datset(
@@ -104,16 +117,16 @@ def toy_datset(
     X = np.linspace(0, 8 * np.pi, N)[:, None]  # X must be of shape [N, 1]
 
     # Deterministic functions in place of latent ones
-    f1 = np.sin
-    f2 = np.cos
+    f1 = lambda x: np.sin(0.5*x)
+    f2 = lambda x: np.cos(2*x)
 
 
     # Compute loc and scale as functions of input X
     loc = f1(X)
-    scale = np.exp(0.1*f2(X))
+    scale = np.exp(f2(X))
 
     # Sample outputs Y from Gaussian Likelihood
-    Y = np.exp(np.random.normal(loc, scale))
+    Y = np.exp(0.1*np.random.normal(loc, scale))
 
     threshold = int(N * split_data)
     train_data = X[0:threshold], Y[0:threshold]
@@ -158,10 +171,15 @@ def simple_datset(
 
 
 def main():
-    train_data, test_data = toy_datset()
+    train_data, test_data, _ = streamflow_dataset()
     x_train, y_train = train_data
-    plt.scatter(range(len(y_train)), y_train)
-    plt.show()
+    x_test, y_test = test_data
+    print(np.isnan(x_train).sum())
+    print(np.isnan(y_train).sum())
+    print(x_train.dtype, y_train.dtype)
+    print(np.isnan(x_test).sum())
+    print(np.isnan(y_test).sum())
+    print(x_test.dtype, y_test.dtype)
 
 
 if __name__ == "__main__":
