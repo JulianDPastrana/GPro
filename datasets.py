@@ -83,13 +83,13 @@ def streamflow_dataset(
         # dtype={"B:AV": float}
     )
     
-    df = df / df.max()
-    df.fillna(0.0, inplace=True)
-    df.replace([np.inf, -np.inf], 0.0, inplace=True)
-    df[df <= 0] = 0.0
+    # df = df / df.max()
+    # df.fillna(0.0, inplace=True)
+    # df.replace([np.inf, -np.inf], 0.0, inplace=True)
+    # df[df <= 0] = 0.0
     
-    # scaler = MinMaxScaler((0, 100))
-    # df[df.columns] = scaler.fit_transform(df)
+    scaler = MinMaxScaler()
+    df[df.columns] = scaler.fit_transform(df)
     
     print(df.describe().T)
     print(df.info())
