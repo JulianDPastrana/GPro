@@ -10,7 +10,7 @@ from typing import Any, Callable
 from matplotlib import cm, ticker
 from datasets import streamflow_dataset
 
-from likelihods import LogNormalLikelihood
+from likelihoods import LogNormalLikelihood
 
 class GaussianLikelihood(MultiLatentLikelihood):
     def __init__(
@@ -149,14 +149,16 @@ def initialize_data(N):
     tf.random.set_seed(0)
 
     X = np.linspace(0, 4 * np.pi, N)[:, None]
-    f1 = np.sin(X)
-    f2 = np.cos(X)
+    # f1 = 0.5 * np.sin(X) + 1.5
+    # f2 = 0.01 * np.cos(X)
 
-    # Ensure positive scale values
-    alpha = f1
-    beta = np.exp(f2)
+    # # Ensure positive scale values
+    # alpha = f1
+    # beta = np.exp(f2)
 
-    Y = pred_distribution(alpha, beta).sample().numpy()
+    # Y = tfp.distributions.Normal(alpha, beta).sample().numpy()
+    Y = 0.5 * np.sin(X) + 1 + np.random.normal(0, 0.1, size=(N, 1))
+    # Y = np.heaviside(Y, 0)
     return X, Y
 
 def build_model(X, Y):
@@ -291,14 +293,14 @@ def plot_results(model, X, Y):
 
 
 # Main execution
-# N = 2001
-pred_distribution = tfp.distributions.Normal
-# X, Y = initialize_data(N)
-train_data, test_data, column_names = streamflow_dataset(input_width=1)
-x_test, y_test = test_data
-x_train, y_train = train_data
-task = 2
-X, Y = x_train[:, task][:, None], y_train[:, task][:, None]
+N = 100
+pred_distribution = tfp.distributions.LogNormal
+X, Y = initialize_data(N)
+# train_data, test_data, column_names = streamflow_dataset(input_width=1)
+# x_test, y_test = test_data
+# x_train, y_train = train_data
+# task = 2
+# X, Y = x_train[:, task][:, None], y_train[:, task][:, None]
 # plt.plot(Y)
 # plt.show()
 model = build_model(X, Y)
@@ -308,12 +310,13 @@ train_model(model, (X, Y), epochs=500)
 def mean_squared_error(y, y_pred):
         return np.mean((y - y_pred) ** 2)
 
-X, Y = x_test[:, task][:, None], y_test[:, task][:, None]
+# X, Y = x_test[:, task][:, None], y_test[:, task][:, None]
 y_pred, _ = model.predict_y(X)
 print(mean_squared_error(Y, y_pred))
-
+print(X.shape, Y.shape)
 Xrange = range(X.shape[0])
 plt.plot(Xrange, y_pred)
+plt.ylim(0, Y.max())
 plt.scatter(Xrange, Y, color="k")
 plt.show()
 # plot_results(model, X, Y)
