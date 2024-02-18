@@ -32,15 +32,18 @@ class LogNormalLikelihood(Likelihood):
         return tf.reduce_sum(A+B+C, axis=-1)
     
     def _predict_mean_and_var(self, X, Fmu, Fvar):
-        muf = Fmu[..., :1]
-        mug = Fmu[..., 1:]
-        sigmaf = Fvar[..., :1]
-        sigmag = Fvar[..., 1:]
-        dcf = tf.math.exp(muf + sigmaf/2)
-        func = lambda g: tf.math.exp(tf.math.exp(g)/2)
-        gc = NDiagGHQuadrature(dim=1, n_gh=100)
-        Pred_mu = dcf*gc(func, mug, sigmag)
-        return Pred_mu, sigmag
+        mean_f = Fmu[..., :1]
+        mean_g = Fmu[..., 1:]
+        var_f = Fvar[..., :1]
+        var_g = Fvar[..., 1:]
+        gc = NDiagGHQuadrature(dim=1, n_gh=50)
+
+        func_mean = lambda g: tf.math.exp(0.5 * tf.math.exp(g))
+        pred_mean = tf.math.exp(mean_f + 0.5 * var_f)*gc(func_mean, mean_g, var_g)
+
+        func_var = lambda g: tf.math.exp(2 * tf.math.exp(g))
+        pred_var = tf.math.exp(2*(mean_f+var_f))*gc(func_var, mean_g, var_g) - pred_mean**2
+        return pred_mean, pred_var
     
     def _predict_log_density(self, X, Fmu, Fvar, Y):
         raise NotImplementedError
