@@ -1,3 +1,4 @@
+#!/home/jumsow/Documents/sandbox/myvenv/bin/python3
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp

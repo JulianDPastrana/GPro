@@ -37,8 +37,8 @@ class LogNormalLikelihood(Likelihood):
         sigmaf = Fvar[..., :1]
         sigmag = Fvar[..., 1:]
         dcf = tf.math.exp(muf + sigmaf/2)
-        func = lambda g: tf.math.exp(tf.math.exp(g/2))
-        gc = NDiagGHQuadrature(dim=1, n_gh=1000)
+        func = lambda g: tf.math.exp(tf.math.exp(g)/2)
+        gc = NDiagGHQuadrature(dim=1, n_gh=100)
         Pred_mu = dcf*gc(func, mug, sigmag)
         return Pred_mu, sigmag
     
