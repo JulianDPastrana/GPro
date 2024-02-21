@@ -6,7 +6,7 @@ from likelihoods import LogNormalLikelihood
 
 def initialize_data(N):
     # Build inputs X
-    X = np.linspace(0, 8 * np.pi, N)[:, None]  # X must be of shape [N, 1]
+    X = np.linspace(0, 2 * np.pi, N)[:, None]  # X must be of shape [N, 1]
 
     # Deterministic functions in place of latent ones
     f1 = np.sin
@@ -16,11 +16,13 @@ def initialize_data(N):
     transform = np.exp
 
     # Compute loc and scale as functions of input X
-    loc = f1(X)
-    scale = transform(0.01*f2(X))
+    loc = 0.5 * f1(X) + 2.5
+    scale = transform(0.001*f2(X))
 
     # Sample outputs Y from LogNornal Likelihood
     Y = np.exp(np.random.normal(loc, scale))
+    # Y = np.random.normal(loc, 0.2)
+    # Y = np.maximum(Y, 0)
     return X, Y
 
 def build_model(X, Y):
@@ -41,18 +43,18 @@ def build_model(X, Y):
         [gpf.inducing_variables.InducingPoints(Z), gpf.inducing_variables.InducingPoints(Z)]
     )
 
-    # initialize mean of variational posterior to be of shape MxL
-    q_mu = np.zeros((M, 2))
-    # initialize \sqrt(Σ) of variational posterior to be of shape LxMxM
-    q_sqrt = np.repeat(np.eye(M)[None, ...], 2, axis=0) * 1.0
+    # # initialize mean of variational posterior to be of shape MxL
+    # q_mu = np.zeros((M, 2))
+    # # initialize \sqrt(Σ) of variational posterior to be of shape LxMxM
+    # q_sqrt = np.repeat(np.eye(M)[None, ...], 2, axis=0) * 1.0
 
     model = gpf.models.SVGP(
         kernel=kernel,
         likelihood=likelihood,
         inducing_variable=inducing_variable,
         num_latent_gps=likelihood.latent_dim,
-        q_mu=q_mu,
-        q_sqrt=q_sqrt
+        # q_mu=q_mu,
+        # q_sqrt=q_sqrt
     )
 
     gpf.utilities.set_trainable(model.q_mu, False)
@@ -93,12 +95,19 @@ def train_model(model, data, epochs=100, log_freq=20):
 # Main execution
 N = 1000
 X, Y = initialize_data(N)
+plt.hist(Y, bins=int(np.sqrt(N)))
+plt.show()
 model = build_model(X, Y)
 train_model(model, (X, Y), epochs=500)
-
-y_pred, y_var = model.predict_y(X)
 Xrange = range(X.shape[0])
-plt.plot(Xrange, y_pred)
-plt.plot(Xrange, y_var)
-plt.scatter(Xrange, Y, color="k")
+plt.scatter(Xrange, Y, color="k", label="Data")
+y_pred, y_var = model.predict_y(X)
+
+plt.plot(Xrange, y_pred, color="Blue", label="Mean")
+plt.plot(Xrange, y_var, label="Var")
+upper = y_pred + 1.96 * np.sqrt(y_var)
+lower = y_pred - 1.96 * np.sqrt(y_var)
+plt.fill_between(Xrange, upper[:, 0], lower[:, 0], alpha=0.3, color="C0", label="CI")
+# plt.ylim(0, 15)
+plt.legend()
 plt.show()
