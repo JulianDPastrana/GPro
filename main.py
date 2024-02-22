@@ -3,6 +3,7 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import gpflow as gpf
 from likelihoods import LogNormalLikelihood
+from data_exploration import get_uv_data
 
 def initialize_data(N):
     # Build inputs X
@@ -25,18 +26,22 @@ def initialize_data(N):
     # Y = np.maximum(Y, 0)
     return X, Y
 
-def build_model(X, Y):
+def build_model(train_data):
     """
     Builds and returns the GP model.
     """
-    likelihood = LogNormalLikelihood(input_dim=1, latent_dim=2, observation_dim=1)
+    X, Y = train_data
+    n_samples, input_dim = X.shape
+    observation_dim = Y.shape[1]
+    latent_dim = 2
+    likelihood = LogNormalLikelihood(input_dim, latent_dim, observation_dim)
     kernel = gpf.kernels.SeparateIndependent(
         [gpf.kernels.SquaredExponential(), gpf.kernels.SquaredExponential()]
     )
     print("Obsevation dim: ", likelihood.observation_dim)
 
     M = 25
-    random_indexes = np.random.choice(range(X.shape[0]), size=M, replace=False)
+    random_indexes = np.random.choice(range(n_samples), size=M, replace=False)
     Z = X[random_indexes]
 
     inducing_variable = gpf.inducing_variables.SeparateIndependentInducingVariables(
@@ -66,7 +71,6 @@ def train_model(model, data, epochs=100, log_freq=20):
     """
     Trains the model for a specified number of epochs.
     """
-    data = (X, Y)
     loss_fn = model.training_loss_closure(data)
 
     gpf.utilities.set_trainable(model.q_mu, False)
@@ -92,22 +96,20 @@ def train_model(model, data, epochs=100, log_freq=20):
             print(f"Epoch {epoch} - Loss: {loss_fn().numpy() : .4f}")
 
 
-# Main execution
-N = 1000
-X, Y = initialize_data(N)
-plt.hist(Y, bins=int(np.sqrt(N)))
-plt.show()
-model = build_model(X, Y)
-train_model(model, (X, Y), epochs=500)
-Xrange = range(X.shape[0])
-plt.scatter(Xrange, Y, color="k", label="Data")
-y_pred, y_var = model.predict_y(X)
+def main():
+    train_data, test_data = get_uv_data()
+    model = build_model(train_data)
+    train_model(model, train_data, epochs=500)
+    X_test, Y_test = test_data
+    Y_mean, Y_var = model.predict_y(X_test)
+    X_range = range(X_test.shape[0])
 
-plt.plot(Xrange, y_pred, color="Blue", label="Mean")
-plt.plot(Xrange, y_var, label="Var")
-upper = y_pred + 1.96 * np.sqrt(y_var)
-lower = y_pred - 1.96 * np.sqrt(y_var)
-plt.fill_between(Xrange, upper[:, 0], lower[:, 0], alpha=0.3, color="C0", label="CI")
-# plt.ylim(0, 15)
-plt.legend()
-plt.show()
+    fig, ax = plt.subplots()
+    ax.scatter(X_range, Y_test)
+    ax.plot(X_range, Y_mean)
+    ax.plot(X_range, Y_var)
+    plt.show()
+    
+
+if __name__ == "__main__":
+    main()

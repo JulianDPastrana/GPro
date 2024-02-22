@@ -73,15 +73,13 @@ class WindowGenerator:
         )
 
 
-def streamflow_dataset(
-    input_width=1, label_width=1, shift=1, verbose=True, split_data=0.8
-):
+def streamflow_dataset():
     df = pd.read_excel(
         io="./useful_volume.xlsx",
         header=0,
         index_col=0,
     )
-    return df.iloc[:, 9]
+    return df.iloc[:, 8:9]
     # # df = df / df.max()
     # # df.fillna(0.0, inplace=True)
     # # df.replace([np.inf, -np.inf], 0.0, inplace=True)
@@ -111,11 +109,33 @@ def streamflow_dataset(
 
 
 
+def get_uv_data():
+    df = streamflow_dataset()
+    df_norm = df / df.max()
+    print(df_norm.describe().T)
+
+    N = len(df_norm)
+    window = WindowGenerator(1, 1, 1, df_norm.columns)
+
+    X, Y = window.make_dataset(df)
+    split_data = 0.8
+    threshold = int(N * split_data)
+    train_data = X[0:threshold], Y[0:threshold]
+    test_data = X[threshold:], Y[threshold:]
+    print(window)
+    print(f"Num train: {threshold}\n" f"Num test: {N - threshold}\n")
+    return train_data, test_data
+
+
 def main():
     df = streamflow_dataset()
-    df.info()
-    df.plot()
+    df_norm = df / df.max()
+    print(df_norm.describe().T)
+    print(df_norm.info())
+    df_norm.plot()
     plt.show()
+
+
 
 
 if __name__ == "__main__":
