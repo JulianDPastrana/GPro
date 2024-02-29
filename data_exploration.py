@@ -111,13 +111,26 @@ def streamflow_dataset():
 
 def get_uv_data():
     df = streamflow_dataset()
-    df_norm = df / df.max()
+    df_norm = df.copy()
+    scaler = MinMaxScaler()
+    df_norm[df.columns] = scaler.fit_transform(df)
     print(df_norm.describe().T)
 
-    N = len(df_norm)
     window = WindowGenerator(1, 1, 1, df_norm.columns)
 
     X, Y = window.make_dataset(df)
+    # Find rows with NaNs in X and Y
+    nan_rows_X = np.any(np.isnan(X), axis=1)
+    nan_rows_Y = np.any(np.isnan(Y), axis=1)
+
+    # Combine the conditions to find rows with NaNs in either X or Y
+    nan_rows = nan_rows_X | nan_rows_Y
+
+    # Select rows where there are no NaNs in either X or Y
+    X = X[~nan_rows]
+    Y = Y[~nan_rows]
+    assert X.shape[0] == Y.shape[0]
+    N = Y.shape[0]
     split_data = 0.8
     threshold = int(N * split_data)
     train_data = X[0:threshold], Y[0:threshold]
@@ -128,12 +141,15 @@ def get_uv_data():
 
 
 def main():
-    df = streamflow_dataset()
-    df_norm = df / df.max()
-    print(df_norm.describe().T)
-    print(df_norm.info())
-    df_norm.plot()
-    plt.show()
+
+    train_data, test_data = get_uv_data()
+    X_test, Y_test = test_data
+    X_train, Y_train = train_data
+    print(np.isnan(X_train).sum(), np.isnan(Y_train).sum())
+    print(X_train.shape, Y_train.shape)
+    index = np.concatenate((np.argwhere(~np.isnan(X_train)), np.argwhere(~np.isnan(Y_train))), axis=0)
+    print(index.shape)
+    print(index)
 
 
 

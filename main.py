@@ -41,25 +41,26 @@ def build_model(train_data):
     print("Obsevation dim: ", likelihood.observation_dim)
 
     M = 25
-    random_indexes = np.random.choice(range(n_samples), size=M, replace=False)
-    Z = X[random_indexes]
+    # random_indexes = np.random.choice(range(n_samples), size=M, replace=False)
+    # Z = X[random_indexes]
+    Z = np.random.randint(0, 1, size=(M, 1))
 
     inducing_variable = gpf.inducing_variables.SeparateIndependentInducingVariables(
         [gpf.inducing_variables.InducingPoints(Z), gpf.inducing_variables.InducingPoints(Z)]
     )
 
-    # # initialize mean of variational posterior to be of shape MxL
-    # q_mu = np.zeros((M, 2))
-    # # initialize \sqrt(Σ) of variational posterior to be of shape LxMxM
-    # q_sqrt = np.repeat(np.eye(M)[None, ...], 2, axis=0) * 1.0
+    # initialize mean of variational posterior to be of shape MxL
+    q_mu = np.zeros((M, 2))
+    # initialize \sqrt(Σ) of variational posterior to be of shape LxMxM
+    q_sqrt = np.repeat(np.eye(M)[None, ...], 2, axis=0) * 1.0
 
     model = gpf.models.SVGP(
         kernel=kernel,
         likelihood=likelihood,
         inducing_variable=inducing_variable,
         num_latent_gps=likelihood.latent_dim,
-        # q_mu=q_mu,
-        # q_sqrt=q_sqrt
+        q_mu=q_mu,
+        q_sqrt=q_sqrt
     )
 
     gpf.utilities.set_trainable(model.q_mu, False)
@@ -98,6 +99,8 @@ def train_model(model, data, epochs=100, log_freq=20):
 
 def main():
     train_data, test_data = get_uv_data()
+    print(np.isnan(*train_data).sum())
+    print(np.isnan(*test_data).sum())
     model = build_model(train_data)
     train_model(model, train_data, epochs=500)
     X_test, Y_test = test_data
@@ -107,7 +110,7 @@ def main():
     fig, ax = plt.subplots()
     ax.scatter(X_range, Y_test)
     ax.plot(X_range, Y_mean)
-    ax.plot(X_range, Y_var)
+    ax.plot(X_range, np.sqrt(Y_var))
     plt.show()
     
 
