@@ -118,7 +118,7 @@ def get_uv_data():
 
     window = WindowGenerator(1, 1, 1, df_norm.columns)
 
-    X, Y = window.make_dataset(df)
+    X, Y = window.make_dataset(df_norm)
     # Find rows with NaNs in X and Y
     nan_rows_X = np.any(np.isnan(X), axis=1)
     nan_rows_Y = np.any(np.isnan(Y), axis=1)
@@ -145,6 +145,8 @@ def main():
     train_data, test_data = get_uv_data()
     X_test, Y_test = test_data
     X_train, Y_train = train_data
+    plt.plot(Y_train)
+    plt.show()
     print(np.isnan(X_train).sum(), np.isnan(Y_train).sum())
     print(X_train.shape, Y_train.shape)
     index = np.concatenate((np.argwhere(~np.isnan(X_train)), np.argwhere(~np.isnan(Y_train))), axis=0)

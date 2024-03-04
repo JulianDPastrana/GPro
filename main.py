@@ -5,26 +5,6 @@ import gpflow as gpf
 from likelihoods import LogNormalLikelihood
 from data_exploration import get_uv_data
 
-def initialize_data(N):
-    # Build inputs X
-    X = np.linspace(0, 2 * np.pi, N)[:, None]  # X must be of shape [N, 1]
-
-    # Deterministic functions in place of latent ones
-    f1 = np.sin
-    f2 = np.cos
-
-    # Use transform = exp to ensure positive-only scale values
-    transform = np.exp
-
-    # Compute loc and scale as functions of input X
-    loc = 0.5 * f1(X) + 2.5
-    scale = transform(0.001*f2(X))
-
-    # Sample outputs Y from LogNornal Likelihood
-    Y = np.exp(np.random.normal(loc, scale))
-    # Y = np.random.normal(loc, 0.2)
-    # Y = np.maximum(Y, 0)
-    return X, Y
 
 def build_model(train_data):
     """
@@ -78,7 +58,7 @@ def train_model(model, data, epochs=100, log_freq=20):
     gpf.utilities.set_trainable(model.q_sqrt, False)
 
     variational_vars = [(model.q_mu, model.q_sqrt)]
-    natgrad_opt = gpf.optimizers.NaturalGradient(gamma=0.1)
+    natgrad_opt = gpf.optimizers.NaturalGradient(gamma=0.01)
 
     adam_vars = model.trainable_variables
     adam_opt = tf.optimizers.Adam(0.01)
@@ -99,20 +79,30 @@ def train_model(model, data, epochs=100, log_freq=20):
 
 def main():
     train_data, test_data = get_uv_data()
-    print(np.isnan(*train_data).sum())
-    print(np.isnan(*test_data).sum())
+    # print(np.isnan(*train_data).sum())
+    # print(np.isnan(*test_data).sum())
+    X_train, Y_train = test_data
+    X_test, Y_test = test_data
+    plt.plot(Y_train)
+    plt.show()
     model = build_model(train_data)
     train_model(model, train_data, epochs=500)
-    X_test, Y_test = test_data
+    
     Y_mean, Y_var = model.predict_y(X_test)
     X_range = range(X_test.shape[0])
 
     fig, ax = plt.subplots()
-    ax.scatter(X_range, Y_test)
+    ax.scatter(X_range, Y_test, c="k")
     ax.plot(X_range, Y_mean)
-    ax.plot(X_range, np.sqrt(Y_var))
+    # ax.plot(X_range, np.sqrt(Y_var))
+    y_lower = Y_mean - 1.96 * np.sqrt(Y_var)
+    y_upper = Y_mean + 1.96 * np.sqrt(Y_var)
+
+    ax.fill_between(
+        X_range, y_lower[:, 0], y_upper[:, 0], color="C0", alpha=0.1
+    )
     plt.show()
     
 
-if __name__ == "__main__":
+if __name__ == "__main__": 
     main()
