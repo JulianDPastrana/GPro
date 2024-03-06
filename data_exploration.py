@@ -79,32 +79,7 @@ def streamflow_dataset():
         header=0,
         index_col=0,
     )
-    return df.iloc[:, 8:9]
-    # # df = df / df.max()
-    # # df.fillna(0.0, inplace=True)
-    # # df.replace([np.inf, -np.inf], 0.0, inplace=True)
-    # # df[df <= 0] = 0.0
-    
-    # scaler = MinMaxScaler()
-    # df[df.columns] = scaler.fit_transform(df)
-    
-    # print(df.describe().T)
-    # print(df.info())
-    # column_indices = {name: i for i, name in enumerate(df.columns)}
-
-    # N = len(df)
-    # window = WindowGenerator(input_width, label_width, shift, df.columns)
-
-    # X, Y = window.make_dataset(df)
-    # threshold = int(N * split_data)
-    # train_data = X[0:threshold], Y[0:threshold]
-    # test_data = X[threshold:], Y[threshold:]
-
-    # if verbose:
-    #     print(window)
-    #     print(f"Num train: {threshold}\n" f"Num test: {N - threshold}\n")
-
-    # return train_data, test_data, df.columns
+    return df.iloc[:, 1:2]
 
 
 

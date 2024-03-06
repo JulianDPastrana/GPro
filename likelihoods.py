@@ -10,7 +10,7 @@ from gpflow.quadrature.gauss_hermite import gh_points_and_weights
 
 class LogNormalLikelihood(Likelihood):
     def __init__(self, input_dim, latent_dim, observation_dim) -> None:
-        super().__init__(input_dim=None, latent_dim=2, observation_dim=None)
+        super().__init__(input_dim=1, latent_dim=2, observation_dim=1)
 
     def _log_prob(self, X, F, Y) -> Tensor:
         eps = 1e-6

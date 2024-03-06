@@ -79,8 +79,6 @@ def train_model(model, data, epochs=100, log_freq=20):
 
 def main():
     train_data, test_data = get_uv_data()
-    # print(np.isnan(*train_data).sum())
-    # print(np.isnan(*test_data).sum())
     X_train, Y_train = test_data
     X_test, Y_test = test_data
     plt.plot(Y_train)
@@ -94,7 +92,7 @@ def main():
     fig, ax = plt.subplots()
     ax.scatter(X_range, Y_test, c="k")
     ax.plot(X_range, Y_mean)
-    # ax.plot(X_range, np.sqrt(Y_var))
+   
     y_lower = Y_mean - 1.96 * np.sqrt(Y_var)
     y_upper = Y_mean + 1.96 * np.sqrt(Y_var)
 
