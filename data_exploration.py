@@ -51,13 +51,10 @@ def streamflow_dataset():
         index_col=0,
         parse_dates=True,
     )
-    return df#.iloc[:, 0:3]
+    return df.iloc[:, 0:3]
 
-def get_uv_data():
-    df = streamflow_dataset()
+def get_uv_data(df):
     scaler = MinMaxScaler()
-    train_test_split_date = pd.Timestamp('2020-01-01')
-
     S_data = []
 
     for series_name in df.columns:
