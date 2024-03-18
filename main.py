@@ -81,8 +81,7 @@ def main():
     train_data, test_data = get_uv_data()
     X_train, Y_train = test_data
     X_test, Y_test = test_data
-    plt.plot(Y_train)
-    plt.show()
+
     model = build_model(train_data)
     train_model(model, train_data, epochs=500)
     
