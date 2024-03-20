@@ -15,7 +15,7 @@ class LogNormalLikelihood(Likelihood):
         # self.input_dim = input_dim
         # self.latent_dim = latent_dim
         # self.observation_dim = observation_dim
-        self.eps = tf.cast(1e-6, tf.float64)
+        self.eps = tf.cast(1e-4, tf.float64)
 
     def _log_prob(self, X, F, Y) -> Tensor:
         # mu = F[..., :1]
@@ -55,6 +55,7 @@ class LogNormalLikelihood(Likelihood):
     
     def _predict_mean_and_var(self, X, Fmu, Fvar):
         predicted_means = []
+        predicted_variances = []
 
         # Gaussian quadrature for numerical integration with TensorFlow and tnp compatibility
         
@@ -69,17 +70,18 @@ class LogNormalLikelihood(Likelihood):
             mu_f_d_2 = Fmu[..., idx_mu_f_d_2:idx_mu_f_d_2+1]
             var_f_d_2 = Fvar[..., idx_mu_f_d_2:idx_mu_f_d_2+1]
 
-            gc = NDiagGHQuadrature(dim=1, n_gh=50)
-            # Function to be integrated over f_{d,2}
-            func_mean = lambda f_d_2: tnp.exp(0.5 * tnp.exp(f_d_2))
+            gc_mean = NDiagGHQuadrature(dim=1, n_gh=50)
+            gc_var = NDiagGHQuadrature(dim=1, n_gh=50)
 
             # Compute predicted mean for the current observation dimension using Gaussian quadrature
-            pred_mean = tnp.exp(mu_f_d_1 + 0.5 * var_f_d_1) * gc(func_mean, mu_f_d_2, var_f_d_2)
+            pred_mean = tnp.exp(mu_f_d_1 + 0.5 * var_f_d_1) * gc_mean(lambda f: tnp.exp(0.5 * tnp.exp(f)), mu_f_d_2, var_f_d_2)
+            pred_sqmean = tnp.exp(2*(mu_f_d_1 + var_f_d_1)) * gc_var(lambda f: tnp.exp(2 * tnp.exp(f)), mu_f_d_2, var_f_d_2)
 
             predicted_means.append(pred_mean)
+            predicted_variances.append(pred_sqmean - tnp.square(pred_mean))
         
         predicted_means = tf.concat(predicted_means, axis=-1)
-        predicted_variances = None  # Placeholder for variance computation
+        predicted_variances = tf.concat(predicted_variances, axis=-1)
 
         return predicted_means, predicted_variances
     

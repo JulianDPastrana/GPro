@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import gpflow as gpf
+import seaborn as sns
 from likelihoods import LogNormalLikelihood
 from data_exploration import get_uv_data
 from gpflow.utilities import print_summary
@@ -33,7 +34,7 @@ def build_model(train_data):
     
     # Initialize the mixing matrix for the coregionalization kernel
     kernel = gpf.kernels.LinearCoregionalization(
-        kern_list, W=np.random.randn(latent_dim, ind_process_dim)
+        kern_list, W=np.random.normal(size=(latent_dim, ind_process_dim))
     )
     
     # Logging for debugging and verification purposes
@@ -41,7 +42,7 @@ def build_model(train_data):
     print("Latent dim:", likelihood.latent_dim)
 
     # Number of inducing points
-    M = 250
+    M = 50
     
     Z = np.random.rand(M, input_dim)
     # initialization of inducing input locations, one set of locations per output
@@ -106,14 +107,19 @@ def main():
     X_test, Y_test = test_data
 
     model = build_model(train_data)
-    print_summary(model)
 
     train_model(model, train_data, epochs=500)
-    
+    print_summary(model)
+    sns.heatmap(model.kernel.W)
+    plt.show()
+
     Y_mean, Y_var = model.predict_y(X_test)
     X_range = range(X_test.shape[0])
 
     observation_dim = Y_test.shape[1]
+    y_lower = Y_mean - 1.96 * np.sqrt(Y_var)
+    y_upper = Y_mean + 1.96 * np.sqrt(Y_var)
+
     # Calculate the number of rows and columns for the subplot matrix
     n_cols = int(np.ceil(np.sqrt(observation_dim)))
     n_rows = int(np.ceil(observation_dim / n_cols))
@@ -127,6 +133,10 @@ def main():
         ax_flat[d].scatter(X_range, Y_test[:, d], c="k", label="Test Data")
         ax_flat[d].plot(X_range, Y_mean[:, d], label="Predicted Mean")
         ax_flat[d].legend()
+        ax_flat[d].fill_between(
+        X_range, y_lower[:, d], y_upper[:, d], color="C0", alpha=0.1, label="CI"
+        )
+
 
     # Hide any unused subplots
     for d in range(observation_dim, n_rows*n_cols):
