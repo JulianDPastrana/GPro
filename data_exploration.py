@@ -67,7 +67,7 @@ def streamflow_dataset():
         index_col=0,
         parse_dates=True,
     )
-    return df.iloc[:, 0:1]
+    return df[["AGREGADO BOGOTA", "CALIMA1", "MIRAFLORES"]]#.iloc[:, 3:5]
 
 def get_uv_data(test_split=0.8):
     df = streamflow_dataset()
