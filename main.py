@@ -45,9 +45,9 @@ def build_model(train_data):
     # Number of inducing points
     M = 50
     
-    Z = np.random.rand(M, input_dim)
+    Zinit = np.random.rand(M, input_dim)
     # initialization of inducing input locations, one set of locations per output
-    Zs = [Z.copy() for _ in range(ind_process_dim)]
+    Zs = [Zinit.copy() for _ in range(ind_process_dim)]
     # initialize as list inducing inducing variables
     iv_list = [gpf.inducing_variables.InducingPoints(Z) for Z in Zs]
     # create multi-output inducing variables from iv_list
