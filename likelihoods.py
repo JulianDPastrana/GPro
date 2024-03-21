@@ -12,18 +12,28 @@ import tensorflow.experimental.numpy as tnp
 class LogNormalLikelihood(Likelihood):
     def __init__(self, input_dim, latent_dim, observation_dim) -> None:
         super().__init__(input_dim, latent_dim, observation_dim)
-        # self.input_dim = input_dim
-        # self.latent_dim = latent_dim
-        # self.observation_dim = observation_dim
         self.eps = tf.cast(1e-4, tf.float64)
 
     def _log_prob(self, X, F, Y) -> Tensor:
-        # mu = F[..., :1]
-        # sigma = tnp.exp(F[..., 1:])
-        # norm_term = -tnp.log(Y+self.eps)-0.5*tnp.log(2*np.pi)-0.5*tnp.log(sigma)
-        # unorm_term = -0.5 * tnp.square(tnp.log(Y+self.eps) - mu) / sigma
-        # return tf.reduce_sum(norm_term + unorm_term, axis=-1)
-        raise NotImplementedError
+        total_terms = 0
+        # Loop through each observation dimension d
+        for d in range(self.observation_dim):
+            # Indices for mu and sigma of f_{d,1} and f_{d,2}
+            idx_f_d_1 = d * 2
+            idx_f_d_2 = idx_f_d_1 + 1
+            
+            f_d_1 = F[..., idx_f_d_1:idx_f_d_1+1]
+            f_d_2 = F[..., idx_f_d_2:idx_f_d_2+1]
+
+            Y_d = Y[..., d:d+1]
+
+            term = tnp.log(2*tnp.pi) + 2*tnp.log(Y_d + self.eps) + f_d_2 + tnp.square(tnp.log(Y_d + self.eps) - f_d_1) / tnp.exp(f_d_2)
+            total_terms += term
+        
+        
+        log_probability_density = -0.5 * tf.squeeze(total_terms)
+
+        return log_probability_density
     
     def _variational_expectations(self, X, Fmu, Fvar, Y) -> Tensor:
         total_terms = 0
@@ -41,16 +51,17 @@ class LogNormalLikelihood(Likelihood):
             mu_f_d_2 = Fmu[..., idx_f_d_2:idx_f_d_2+1]
             sigma_f_d_2 = Fvar[..., idx_f_d_2:idx_f_d_2+1]
             
+            Y_d = Y[..., d:d+1]
             # Compute the terms according to the expected log density formula for each observation dimension d
-            term = tnp.log(2 * tnp.pi) + 2 * tnp.log(Y[..., d:d+1] + self.eps) + mu_f_d_2 + tnp.exp(-mu_f_d_2 + sigma_f_d_2 / 2) * (
-                tnp.square(tf.math.log(Y[..., d:d+1] + self.eps)) - 2 * tnp.log(Y[..., d:d+1] + self.eps) * mu_f_d_1 + tnp.square(mu_f_d_1) + sigma_f_d_1)
+            term = tnp.log(2 * tnp.pi) + 2 * tnp.log(Y_d + self.eps) + mu_f_d_2 + tnp.exp(-mu_f_d_2 + sigma_f_d_2 / 2) * (
+                tnp.square(tf.math.log(Y_d + self.eps)) - 2 * tnp.log(Y_d + self.eps) * mu_f_d_1 + tnp.square(mu_f_d_1) + sigma_f_d_1)
             
             # Accumulate the terms from all observation dimensions
             total_terms += term
         
         # Final expected log density, summing over all dimensions and data points
-        expected_log_density = -0.5 * tf.reduce_sum(total_terms, axis=-1)
-        
+        expected_log_density = -0.5 * tf.squeeze(total_terms)
+
         return expected_log_density
     
     def _predict_mean_and_var(self, X, Fmu, Fvar):

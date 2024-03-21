@@ -6,6 +6,7 @@ import seaborn as sns
 from likelihoods import LogNormalLikelihood
 from data_exploration import get_uv_data
 from gpflow.utilities import print_summary
+from metrics import negatve_log_predictive_density
 
 def build_model(train_data):
     """
@@ -110,8 +111,6 @@ def main():
 
     train_model(model, train_data, epochs=500)
     print_summary(model)
-    sns.heatmap(model.kernel.W)
-    plt.show()
 
     Y_mean, Y_var = model.predict_y(X_test)
     X_range = range(X_test.shape[0])
@@ -143,8 +142,11 @@ def main():
         ax_flat[d].axis('off')
 
     plt.tight_layout()
-    plt.show()
+    plt.savefig("predictions.png")
+    plt.close()
 
+    nlogpred = negatve_log_predictive_density(model, X_test, Y_test)
+    print(nlogpred)
     
 
 if __name__ == "__main__": 
