@@ -1,11 +1,7 @@
-from gpflow.base import MeanAndVariance
 from gpflow.likelihoods import Likelihood
 from tensorflow.python.framework.ops import Tensor
-from numpy import ndarray
 import tensorflow as tf
-import numpy as np
-from gpflow.quadrature import GaussianQuadrature, NDiagGHQuadrature
-from gpflow.quadrature.gauss_hermite import gh_points_and_weights
+from gpflow.quadrature import NDiagGHQuadrature
 import tensorflow.experimental.numpy as tnp
 
 
@@ -99,5 +95,3 @@ class LogNormalLikelihood(Likelihood):
     def _predict_log_density(self, X, Fmu, Fvar, Y):
         raise NotImplementedError
 
-
-likelihood = LogNormalLikelihood(input_dim=1, latent_dim=2, observation_dim=1)

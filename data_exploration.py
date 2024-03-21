@@ -67,14 +67,14 @@ def streamflow_dataset():
         index_col=0,
         parse_dates=True,
     )
-    return df[["AGREGADO BOGOTA", "CALIMA1", "MIRAFLORES", "PENOL"]]#.iloc[:, 3:5]
+    df = df.clip(lower=0) 
+    return df[["AGREGADO BOGOTA", "CALIMA1", "MIRAFLORES", "PENOL"]]
 
 def get_uv_data(test_split=0.8):
     df = streamflow_dataset()
     df_norm = df.copy()
     scaler = MinMaxScaler()
     df_norm[df.columns] = scaler.fit_transform(df)
-    print(df_norm.describe().T)
 
     window = WindowGenerator(1, 1, 1, df_norm.columns)
 
