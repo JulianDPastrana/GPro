@@ -1,10 +1,7 @@
 import numpy as np
-import tensorflow as tf
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
 from sklearn.preprocessing import MinMaxScaler
-
 
 class WindowGenerator:
     def __init__(
@@ -61,30 +58,18 @@ class WindowGenerator:
             y_data[index] = labels.ravel()
 
         return x_data, y_data
-
-    def __repr__(self):
-        label_columns = ", ".join(str(label) for label in self.label_columns)
-        return (
-            "\033[1mWindow Information\033[0m\n"
-            f"Total window size: {self.total_window_size}\n"
-            f"Input indices: {self.input_indices}\n"
-            f"Label indices: {self.label_indices}\n"
-            f"Label column name(s): {label_columns}\n"
-        )
-
+    
 
 def streamflow_dataset():
     df = pd.read_excel(
         io="./useful_volume.xlsx",
         header=0,
         index_col=0,
+        parse_dates=True,
     )
-    return df.iloc[:, 1:2]
+    return df[["AGREGADO BOGOTA", "CALIMA1", "MIRAFLORES", "PENOL"]]#.iloc[:, 3:5]
 
-
-
-
-def get_uv_data():
+def get_uv_data(test_split=0.8):
     df = streamflow_dataset()
     df_norm = df.copy()
     scaler = MinMaxScaler()
@@ -94,42 +79,28 @@ def get_uv_data():
     window = WindowGenerator(1, 1, 1, df_norm.columns)
 
     X, Y = window.make_dataset(df_norm)
-    # Find rows with NaNs in X and Y
+
+    # Find rows with NaNs in X and Y to ensure continuity
     nan_rows_X = np.any(np.isnan(X), axis=1)
     nan_rows_Y = np.any(np.isnan(Y), axis=1)
-
-    # Combine the conditions to find rows with NaNs in either X or Y
-    nan_rows = nan_rows_X | nan_rows_Y
-
-    # Select rows where there are no NaNs in either X or Y
-    X = X[~nan_rows]
-    Y = Y[~nan_rows]
-    assert X.shape[0] == Y.shape[0]
+    nan_rows = nan_rows_X | nan_rows_Y   
+    # Filter out the rows with NaNs
+    X_clean, Y_clean = X[~nan_rows,:], Y[~nan_rows,:]
+    # Split into train and test sets
     N = Y.shape[0]
-    split_data = 0.8
-    threshold = int(N * split_data)
-    train_data = X[0:threshold], Y[0:threshold]
-    test_data = X[threshold:], Y[threshold:]
-    print(window)
-    print(f"Num train: {threshold}\n" f"Num test: {N - threshold}\n")
+    thr = int(test_split * N)
+    train_data = (X_clean[:thr], Y_clean[:thr])
+    test_data = (X_clean[thr:], Y_clean[thr:])
     return train_data, test_data
 
-
 def main():
-
     train_data, test_data = get_uv_data()
-    X_test, Y_test = test_data
     X_train, Y_train = train_data
-    plt.plot(Y_train)
+    X_test, Y_test = test_data
+    print(X_train.shape, Y_train.shape, X_test.shape, Y_test.shape)
+    # X_test, Y_test = S_test[0]
+    plt.plot(Y_train[:, 0])
     plt.show()
-    print(np.isnan(X_train).sum(), np.isnan(Y_train).sum())
-    print(X_train.shape, Y_train.shape)
-    index = np.concatenate((np.argwhere(~np.isnan(X_train)), np.argwhere(~np.isnan(Y_train))), axis=0)
-    print(index.shape)
-    print(index)
-
-
-
 
 if __name__ == "__main__":
     main()
