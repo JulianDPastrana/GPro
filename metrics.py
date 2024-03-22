@@ -3,7 +3,7 @@ import gpflow as gpf
 import matplotlib.pyplot as plt
 import numpy as np
 
-def negatve_log_predictive_density(model, X_test, Y_test, n_samples=100):
+def negatve_log_predictive_density(model, X_test, Y_test, n_samples=500):
         F_samples = model.predict_f_samples(X_test, n_samples)
         # monte-carlazo
         log_pred = model.likelihood.log_prob(X=X_test, F=F_samples, Y=Y_test)
@@ -80,3 +80,29 @@ def plot_gp_predictions(model, X, Y, name):
     plt.tight_layout()
     plt.savefig(name+".png")
     plt.close()
+
+
+def plot_results(model, X, Y):
+    n_samples = 100
+    n_y_pixels = 100
+    N = X.shape[0]
+    X_range = range(N)
+    observation_dim = Y.shape[1]
+    # Calculate the number of rows and columns for the subplot matrix
+    n_cols = int(np.ceil(np.sqrt(observation_dim)))
+    n_rows = int(np.ceil(observation_dim / n_cols))
+
+    _, ax = plt.subplots(n_rows, n_cols, figsize=(5*n_cols, 5*n_rows))
+
+    # Flatten the ax array for easy indexing
+    ax_flat = ax.flatten()
+    res = np.zeros((N, n_y_pixels, observation_dim))
+    F_samples = model.predict_f_samples(X, n_samples)
+    for j in range(N):
+         for i in range(n_samples):
+            F_sample = F_samples[i, j, :].reshape(1, -1)
+            lin_spaced = np.linspace(Y.min(), Y.max(), n_y_pixels)[:, None]
+            print(F_sample.shape)
+            prob = np.exp(model.likelihood.log_prob(X=X, F=F_sample, Y=tiled))
+            print(prob.shape)
+            res[j,:,:] += prob.numpy

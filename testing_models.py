@@ -3,8 +3,7 @@ import matplotlib.pyplot as plt
 import gpflow as gpf
 from likelihoods import LogNormalLikelihood
 from data_exploration import get_uv_data
-from metrics import negatve_log_predictive_density, train_model, plot_gp_predictions, mean_squared_error
-
+from metrics import *
 
 # Get train and test datasets
 train_data, test_data = get_uv_data()
@@ -99,3 +98,4 @@ for model, name in zip([model_ind, model_lmc, model_hc_ind, model_hc_cor], ["Ind
     mse = mean_squared_error(model, X_test, Y_test)
     print(f"{name} - NLPD: {nlogpred.numpy():.2e}, MSE: {mse.numpy():.2e}")
     plot_gp_predictions(model, X_test, Y_test, name)
+    # plot_results(model, X_test, Y_test)
