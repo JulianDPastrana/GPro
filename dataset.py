@@ -13,7 +13,7 @@ def save_by_plant(df):
     return df_pivoted
 
 # Create a pydataxm.ReadDB instance
-start, end = dt.date(2000, 1, 1), dt.date(2024, 2, 12)
+start, end = dt.date(2000, 1, 1), dt.date(2024, 3, 22)
 api_object = pydataxm.ReadDB()
 
 df = api_object.get_collections()

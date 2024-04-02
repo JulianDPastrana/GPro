@@ -15,22 +15,40 @@ def mean_squared_error(model, X_test, Y_test):
      mse = tf.reduce_mean(tf.square(Y_test - Y_mean))
      return mse
 
+def mean_absolute_error(model, X_test, Y_test):
+     Y_mean, _ = model.predict_y(X_test)
+     mae = tf.reduce_mean(tf.math.abs(Y_test - Y_mean))
+     return mae
 
-def train_model(model, data, epochs=100, log_freq=20, verbose=True):
+
+def train_model(model, data, validation_data, epochs=100, log_freq=20, patience=10, verbose=True):
     """
-    Trains the model for a specified number of epochs.
+    Trains the model for a specified number of epochs with early stopping.
+    
+    Parameters:
+    - model: The GPflow model to train.
+    - data: The training data.
+    - validation_data: A subset of data for validation.
+    - epochs: The maximum number of epochs to train for.
+    - log_freq: The frequency with which to log the training progress.
+    - patience: The number of epochs to wait for improvement on the validation set before stopping.
+    - verbose: Whether to print progress messages.
     """
-    loss_fn = model.training_loss_closure(data)
+    loss_fn = model.training_loss_closure(data, compile=True)
+    val_loss_fn = model.training_loss_closure(validation_data, compile=True)
 
     gpf.utilities.set_trainable(model.q_mu, False)
     gpf.utilities.set_trainable(model.q_sqrt, False)
 
     variational_vars = [(model.q_mu, model.q_sqrt)]
-    natgrad_opt = gpf.optimizers.NaturalGradient(gamma=0.01)
+    natgrad_opt = gpf.optimizers.NaturalGradient(gamma=0.005)
 
     adam_vars = model.trainable_variables
-    adam_opt = tf.optimizers.AdamW(0.01)
+    adam_opt = tf.optimizers.Adam(0.005)
 
+    # Early stopping
+    best_val_loss = float('inf')
+    epochs_without_improvement = 0
 
     @tf.function
     def optimisation_step():
@@ -40,9 +58,23 @@ def train_model(model, data, epochs=100, log_freq=20, verbose=True):
     for epoch in range(1, epochs + 1):
         optimisation_step()
 
-        # For every 'log_freq' epochs, print the epoch and plot the predictions against the data
-        if epoch % log_freq == 0 and epoch > 0 and verbose:
-            print(f"Epoch {epoch} - Loss: {loss_fn().numpy() : .4f}")
+        # Check validation loss for early stopping
+        val_loss = val_loss_fn().numpy()
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
+
+        if epochs_without_improvement >= patience:
+            if verbose:
+                print(f"Stopping early at epoch {epoch} due to no improvement in validation loss.")
+            break
+
+        if epoch % log_freq == 0 and verbose:
+            train_loss = loss_fn().numpy()
+            print(f"Epoch {epoch} - Training Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}")
+
 
 
 

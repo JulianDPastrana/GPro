@@ -15,10 +15,10 @@ observation_dim = Y_test.shape[1]
 
 # Determine dimensions for the latent variables and inducing points
 latent_dim = 2 * observation_dim
-ind_process_dim = 10  # Number of independent processes in the coregionalization model
+ind_process_dim = 50  # Number of independent processes in the coregionalization model
 
 # Set up some common model's inducing hyperparameters
-M = 50 # Number of inducing points
+M = 150 # Number of inducing points
 Zinit = np.random.rand(M, input_dim)
 
 # Independent Multi-Output Gaussian Process with Gaussian Likelihood
@@ -76,7 +76,7 @@ kern_list = [
     gpf.kernels.SquaredExponential(lengthscales=[1 for i in range(input_dim)]) for _ in range(ind_process_dim)
 ]
 kernel = gpf.kernels.LinearCoregionalization(
-    kern_list, W=np.random.randn(latent_dim, ind_process_dim)
+    kern_list, W=np.random.normal(size=(latent_dim, ind_process_dim), scale=0.01)+np.eye(latent_dim, ind_process_dim)
 )
 Zs = [Zinit.copy() for _ in range(ind_process_dim)]
 iv_list = [gpf.inducing_variables.InducingPoints(Z) for Z in Zs]
@@ -96,6 +96,7 @@ for model, name in zip([model_ind, model_lmc, model_hc_ind, model_hc_cor], ["Ind
     train_model(model, train_data, epochs=500, verbose=False)
     nlogpred = negatve_log_predictive_density(model, X_test, Y_test)
     mse = mean_squared_error(model, X_test, Y_test)
-    print(f"{name} - NLPD: {nlogpred.numpy():.2e}, MSE: {mse.numpy():.2e}")
+    mae = mean_absolute_error(model, X_test, Y_test)
+    print(f"{name} - NLPD: {nlogpred.numpy():.2e}, MSE: {mse.numpy():.2e}, MAE: {mae.numpy():.2e}")
     plot_gp_predictions(model, X_test, Y_test, name)
     # plot_results(model, X_test, Y_test)
