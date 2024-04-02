@@ -31,7 +31,7 @@ def build_model(train_data):
     likelihood = LogNormalLikelihood(input_dim, latent_dim, observation_dim)
     
     # Create a list of base kernels for the Linear Coregionalization model
-    kern_list = [gpf.kernels.SquaredExponential(lengthscales=[1 for i in range(input_dim)]) + gpf.kernels.Linear(variance=[1 for i in range(input_dim)]) for _ in range(ind_process_dim)]
+    kern_list = [gpf.kernels.SquaredExponential(lengthscales=[1 for i in range(input_dim)]) for _ in range(ind_process_dim)]
     
     # Initialize the mixing matrix for the coregionalization kernel
     kernel = gpf.kernels.LinearCoregionalization(
@@ -43,7 +43,7 @@ def build_model(train_data):
     print("Latent dim:", likelihood.latent_dim)
 
     # Number of inducing points
-    M = 150
+    M = 50
     
     Zinit = np.random.rand(M, input_dim)
     # initialization of inducing input locations, one set of locations per output

@@ -4,6 +4,10 @@ import tensorflow as tf
 from gpflow.quadrature import NDiagGHQuadrature
 import math as m
 import numpy as np
+from scipy.stats import norm
+from scipy.special import roots_hermite
+import tensorflow_probability as tfp
+from scipy.special import roots_legendre
 
 class LogNormalLikelihood(Likelihood):
     def __init__(self, input_dim, latent_dim, observation_dim) -> None:
@@ -60,42 +64,42 @@ class LogNormalLikelihood(Likelihood):
         expected_log_density = -0.5 * tf.reduce_sum(total_terms, axis=-1)
 
         return expected_log_density
-    
+        
+
+
     def _predict_mean_and_var(self, X, Fmu, Fvar):
         predicted_means = []
         predicted_variances = []
 
-        # Gaussian quadrature for numerical integration with TensorFlow and tnp compatibility
-        
-        gc = NDiagGHQuadrature(dim=1, n_gh=500)
         # Loop through each observation dimension
         for d in range(self.observation_dim):
             idx_mu_f_d_1 = d * 2
             idx_mu_f_d_2 = idx_mu_f_d_1 + 1
-            
+
             mu_f_d_1 = Fmu[..., idx_mu_f_d_1:idx_mu_f_d_1+1]
             var_f_d_1 = Fvar[..., idx_mu_f_d_1:idx_mu_f_d_1+1]
             mu_f_d_2 = Fmu[..., idx_mu_f_d_2:idx_mu_f_d_2+1]
             var_f_d_2 = Fvar[..., idx_mu_f_d_2:idx_mu_f_d_2+1]
 
-            # gc_mean = NDiagGHQuadrature(dim=1, n_gh=150)
-            # gc_var = NDiagGHQuadrature(dim=1, n_gh=150)
-            n_samples = 1000
-            print(mu_f_d_2.shape)
-            f_d_2_samples = np.random.normal(loc=mu_f_d_2, scale=var_f_d_2, size=n_samples)
+            # Number of Monte Carlo samples
+            n_samples = 20000  
 
-            # Compute predicted mean for the current observation dimension using Gaussian quadrature
-            pred_mean = tf.math.exp(mu_f_d_1 + 0.5 * var_f_d_1) * tf.reduce_mean(tf.math.exp(0.5 * tf.math.exp(f_d_2_samples)))#gc(lambda f: tf.math.exp(0.5 * tf.math.exp(f)), mu_f_d_2, var_f_d_2)
-            pred_sqmean = tf.math.exp(2*(mu_f_d_1 + var_f_d_1)) * tf.reduce_mean(tf.math.exp(2 * tf.math.exp(f_d_2_samples)))#gc(lambda f: tf.math.exp(2 * tf.math.exp(f)), mu_f_d_2, var_f_d_2)
+            # Sample from q(f_{d,2})
+            f_d_2_samples = np.random.normal(size=(mu_f_d_2.shape[0], n_samples), loc=mu_f_d_2, scale=tf.sqrt(var_f_d_2))
 
-            predicted_means.append(pred_mean)
-            predicted_variances.append(pred_sqmean - tf.math.square(pred_mean))
-        
+            # Compute the integral for expected value using Monte Carlo integration
+            pred_mean_integral = tf.exp(mu_f_d_1 + 0.5 * var_f_d_1) * tf.reduce_mean(tf.exp(0.5 * tf.exp(f_d_2_samples)), axis=0)
+
+            # Compute the integral for expected value of square using Monte Carlo integration
+            pred_var_integral = tf.exp(2*(mu_f_d_1 + var_f_d_1)) * tf.reduce_mean(tf.exp(2 * tf.exp(f_d_2_samples)), axis=0)
+
+            predicted_means.append(pred_mean_integral)
+            predicted_variances.append(pred_var_integral - tf.math.square(pred_mean_integral))
+
         predicted_means = tf.concat(predicted_means, axis=-1)
         predicted_variances = tf.concat(predicted_variances, axis=-1)
-        # print(np.sum(np.isnan(X)))
         return predicted_means, predicted_variances
-    
+        
     def _predict_log_density(self, X, Fmu, Fvar, Y):
         raise NotImplementedError
 
