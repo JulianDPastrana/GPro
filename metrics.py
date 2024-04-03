@@ -2,6 +2,7 @@ import tensorflow as tf
 import gpflow as gpf
 import matplotlib.pyplot as plt
 import numpy as np
+from likelihoods import LogNormalLikelihood
 
 def negatve_log_predictive_density(model, X_test, Y_test, n_samples=500):
         F_samples = model.predict_f_samples(X_test, n_samples)
@@ -39,12 +40,13 @@ def train_model(model, data, validation_data, epochs=100, log_freq=20, patience=
 
     gpf.utilities.set_trainable(model.q_mu, False)
     gpf.utilities.set_trainable(model.q_sqrt, False)
+  
 
     variational_vars = [(model.q_mu, model.q_sqrt)]
-    natgrad_opt = gpf.optimizers.NaturalGradient(gamma=0.005)
+    natgrad_opt = gpf.optimizers.NaturalGradient(gamma=0.01)
 
     adam_vars = model.trainable_variables
-    adam_opt = tf.optimizers.Adam(0.005)
+    adam_opt = tf.optimizers.Adam(0.01)
 
     # Early stopping
     best_val_loss = float('inf')
@@ -76,6 +78,72 @@ def train_model(model, data, validation_data, epochs=100, log_freq=20, patience=
             print(f"Epoch {epoch} - Training Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}")
 
 
+
+def create_independent_model(observation_dim, input_dim, num_inducing):
+    Zinit = np.random.rand(num_inducing, input_dim)
+    
+    kern_list = [gpf.kernels.SquaredExponential(lengthscales=np.ones(input_dim)) for _ in range(observation_dim)]
+    kernel = gpf.kernels.SeparateIndependent(kern_list)
+    iv_list = [gpf.inducing_variables.InducingPoints(Zinit) for _ in range(observation_dim)]
+    iv = gpf.inducing_variables.SeparateIndependentInducingVariables(iv_list)
+    
+    return gpf.models.SVGP(
+        kernel=kernel,
+        likelihood=gpf.likelihoods.Gaussian(),
+        inducing_variable=iv,
+        num_latent_gps=observation_dim
+    )
+
+def create_lmc_model(observation_dim, input_dim, num_inducing, indfun_dim):
+    Zinit = np.random.rand(num_inducing, input_dim)
+    
+    kern_list = [gpf.kernels.SquaredExponential(lengthscales=np.ones(input_dim)) for _ in range(indfun_dim)]
+    kernel = gpf.kernels.LinearCoregionalization(kern_list, W=np.random.randn(observation_dim, indfun_dim))
+    iv_list = [gpf.inducing_variables.InducingPoints(Zinit) for _ in range(indfun_dim)]
+    iv = gpf.inducing_variables.SeparateIndependentInducingVariables(iv_list)
+    q_mu = np.zeros((num_inducing, indfun_dim))
+    q_sqrt = np.repeat(np.eye(num_inducing)[None, ...], indfun_dim, axis=0) * 1.0
+    return gpf.models.SVGP(
+        kernel=kernel,
+        likelihood=gpf.likelihoods.Gaussian(),
+        inducing_variable=iv,
+        q_mu=q_mu,
+        q_sqrt=q_sqrt
+    )
+
+def create_chained_independent_model(observation_dim, input_dim, num_inducing):
+    latent_dim = 2 * observation_dim 
+    Zinit = np.random.rand(num_inducing, input_dim)
+    
+    kern_list = [gpf.kernels.SquaredExponential(lengthscales=np.ones(input_dim)) for _ in range(latent_dim)]
+    kernel = gpf.kernels.SeparateIndependent(kern_list)
+    iv_list = [gpf.inducing_variables.InducingPoints(Zinit) for _ in range(latent_dim)]
+    iv = gpf.inducing_variables.SeparateIndependentInducingVariables(iv_list)
+    
+    return gpf.models.SVGP(
+        kernel=kernel,
+        likelihood=LogNormalLikelihood(input_dim, latent_dim, observation_dim),
+        inducing_variable=iv,
+        num_latent_gps=observation_dim
+    )
+
+def create_chained_correlated_model(observation_dim, input_dim, num_inducing, indfun_dim):
+    latent_dim = 2 * observation_dim
+    Zinit = np.random.rand(num_inducing, input_dim)
+    
+    kern_list = [gpf.kernels.SquaredExponential(lengthscales=np.ones(input_dim)) for _ in range(indfun_dim)]
+    kernel = gpf.kernels.LinearCoregionalization(kern_list, W=np.random.randn(latent_dim, indfun_dim))
+    iv_list = [gpf.inducing_variables.InducingPoints(Zinit) for _ in range(indfun_dim)]
+    iv = gpf.inducing_variables.SeparateIndependentInducingVariables(iv_list)
+    q_mu = np.zeros((num_inducing, indfun_dim))
+    q_sqrt = np.repeat(np.eye(num_inducing)[None, ...], indfun_dim, axis=0) * 1.0
+    return gpf.models.SVGP(
+        kernel=kernel,
+        likelihood=LogNormalLikelihood(input_dim, latent_dim, observation_dim),
+        inducing_variable=iv,
+        q_mu=q_mu,
+        q_sqrt=q_sqrt
+    )
 
 
 def plot_gp_predictions(model, X, Y, name):

@@ -70,9 +70,9 @@ def streamflow_dataset():
     df = df.clip(lower=0)
     # print(df.describe().T)
     return df[["AGREGADO BOGOTA", "CALIMA1", "MIRAFLORES", "PENOL",
-            #    "PLAYAS", "PUNCHINA", "BETANIA", "CHUZA",
-            #    "ESMERALDA", "GUAVIO", "PRADO", "RIOGRANDE2",
-            #    "SAN LORENZO", "TRONERAS", "URRA1", "SALVAJINA"
+               "PLAYAS", "PUNCHINA", "BETANIA", "CHUZA",
+               "ESMERALDA", "GUAVIO", "PRADO", "RIOGRANDE2",
+               "SAN LORENZO", "TRONERAS", "URRA1", "SALVAJINA"
                ]
                ]
 
@@ -82,6 +82,7 @@ def get_uv_data():
     scaler = MinMaxScaler()
     df_norm[df.columns] = scaler.fit_transform(df)
     print(df_norm.describe().T)
+    print(df_norm.info())
 
     window = WindowGenerator(1, 1, 1, df_norm.columns)
 

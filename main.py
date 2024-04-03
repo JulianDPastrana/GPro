@@ -3,7 +3,7 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import gpflow as gpf
 import seaborn as sns
-from likelihoods import LogNormalLikelihood
+from likelihoods import LogNormalLikelihood, LogNormalMCLikelihood, LogNormalQuadLikelihood
 from data_exploration import get_uv_data
 from gpflow.utilities import print_summary
 from metrics import negatve_log_predictive_density, train_model
@@ -23,19 +23,19 @@ def build_model(train_data):
     n_samples, input_dim = X.shape
     observation_dim = Y.shape[1]
     
-    # Determine dimensions for the latent variables and inducing points
+    # Determine dimensions for the latenLogNormalLikelihoodt variables and inducing points
     latent_dim = 2 * observation_dim
-    ind_process_dim = 10  # Number of independent processes in the coregionalization model
+    ind_process_dim = latent_dim  # Number of independent processes in the coregionalization model
 
     # Initialize the likelihood with appropriate dimensions
-    likelihood = LogNormalLikelihood(input_dim, latent_dim, observation_dim)
+    likelihood = LogNormalMCLikelihood(input_dim, latent_dim, observation_dim)
     
     # Create a list of base kernels for the Linear Coregionalization model
-    kern_list = [gpf.kernels.SquaredExponential(lengthscales=[1 for i in range(input_dim)]) for _ in range(ind_process_dim)]
+    kern_list = [gpf.kernels.SquaredExponential(lengthscales=np.random.rand(input_dim)+0.01) for _ in range(ind_process_dim)]
     
     # Initialize the mixing matrix for the coregionalization kernel
     kernel = gpf.kernels.LinearCoregionalization(
-        kern_list, W=np.random.normal(size=(latent_dim, ind_process_dim), scale=0.01)
+        kern_list, W=np.eye(latent_dim)
     )
     
     # Logging for debugging and verification purposes
@@ -43,7 +43,7 @@ def build_model(train_data):
     print("Latent dim:", likelihood.latent_dim)
 
     # Number of inducing points
-    M = 50
+    M = 15
     
     Zinit = np.random.rand(M, input_dim)
     # initialization of inducing input locations, one set of locations per output
@@ -80,10 +80,11 @@ def main():
 
     model = build_model(train_data)
 
-    train_model(model, train_data, validation_data=val_data, epochs=500)
-    print_summary(model)
+    train_model(model, train_data, validation_data=val_data, epochs=5000, patience=50)
+    # print_summary(model)
 
     Y_mean, Y_var = model.predict_y(X_test)
+    print(Y_var)
     X_range = range(X_test.shape[0])
 
     observation_dim = Y_test.shape[1]

@@ -16,28 +16,28 @@ def chained_corr(input_dim, latent_dim, observation_dim, ind_process_dim, num_in
         kern_list, W=np.random.normal(size=(latent_dim, ind_process_dim), scale=0.01)+np.eye(latent_dim, ind_process_dim)
     )
     Zinit = np.random.rand(num_inducing, input_dim)
-    Zs = [Zinit.copy() for _ in range(latent_dim)]
+    Zs = [Zinit.copy() for _ in range(ind_process_dim)]
     iv_list = [gpf.inducing_variables.InducingPoints(Z) for Z in Zs]
     iv = gpf.inducing_variables.SeparateIndependentInducingVariables(iv_list)
-    # q_mu = np.zeros((num_inducing, ind_process_dim))
-    # q_sqrt = np.repeat(np.eye(num_inducing)[None, ...], ind_process_dim, axis=0) * 1.0
-    # model_hc_cor = gpf.models.SVGP(
-    #     kernel=kernel,
-    #     likelihood=LogNormalLikelihood(input_dim, latent_dim, observation_dim),
-    #     inducing_variable=iv,
-    #     q_mu=q_mu,
-    #     q_sqrt=q_sqrt
-    # )
-    kern_list = [
-    gpf.kernels.SquaredExponential(lengthscales=[1 for i in range(input_dim)]) for _ in range(latent_dim)
-]
-    kernel = gpf.kernels.SeparateIndependent(kern_list)
+    q_mu = np.zeros((num_inducing, ind_process_dim))
+    q_sqrt = np.repeat(np.eye(num_inducing)[None, ...], ind_process_dim, axis=0) * 1.0
     model = gpf.models.SVGP(
         kernel=kernel,
         likelihood=LogNormalLikelihood(input_dim, latent_dim, observation_dim),
         inducing_variable=iv,
-        num_latent_gps=latent_dim
+        q_mu=q_mu,
+        q_sqrt=q_sqrt
     )
+#     kern_list = [
+#     gpf.kernels.SquaredExponential(lengthscales=[1 for i in range(input_dim)]) for _ in range(latent_dim)
+# ]
+#     kernel = gpf.kernels.SeparateIndependent(kern_list)
+#     model = gpf.models.SVGP(
+#         kernel=kernel,
+#         likelihood=LogNormalLikelihood(input_dim, latent_dim, observation_dim),
+#         inducing_variable=iv,
+#         num_latent_gps=latent_dim
+#     )
     return model
 
 
@@ -75,7 +75,7 @@ for num_inducing, ind_process_dim in product(num_inducing_values, ind_process_di
         Y_train_fold, Y_test_fold = Y_train[train_index], Y_train[test_index]
 
         model = chained_corr(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing)
-        train_model(model, (X_train_fold, Y_train_fold), validation_data=(X_test_fold, Y_test_fold), epochs=500, verbose=False)
+        train_model(model, (X_train_fold, Y_train_fold), validation_data=(X_test_fold, Y_test_fold), epochs=500, verbose=False, patience=1000)
 
         nlogpred = negatve_log_predictive_density(model, X_test_fold, Y_test_fold)
         mse = mean_squared_error(model, X_test_fold, Y_test_fold)
