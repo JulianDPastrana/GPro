@@ -81,8 +81,8 @@ def get_uv_data():
     df_norm = df.copy()
     scaler = MinMaxScaler()
     df_norm[df.columns] = scaler.fit_transform(df)
-    print(df_norm.describe().T)
-    print(df_norm.info())
+    # print(df_norm.describe().T)
+    # print(df_norm.info())
 
     window = WindowGenerator(1, 1, 1, df_norm.columns)
 
@@ -95,20 +95,21 @@ def get_uv_data():
     # Filter out the rows with NaNs
     X_clean, Y_clean = X[~nan_rows,:], Y[~nan_rows,:]
     # Split into train and test sets
-    N = Y.shape[0]
-    train_data = (X_clean[0:int(N*0.7)], Y_clean[0:int(N*0.7)])
-    val_data = (X_clean[int(N*0.7):int(N*0.9)], Y_clean[int(N*0.7):int(N*0.9)])
+    N = Y_clean.shape[0]
+    train_data = (X_clean[0:int(N*0.85)], Y_clean[0:int(N*0.85)])
+    val_data = (X_clean[int(N*0.85):int(N*0.9)], Y_clean[int(N*0.85):int(N*0.9)])
     test_data = (X_clean[int(N*0.9):], Y_clean[int(N*0.9):])
     return train_data, val_data, test_data
 
 def main():
     train_data, val_data, test_data = get_uv_data()
     X_train, Y_train = train_data
+    print(np.isnan(Y_train).sum())
     X_val, Y_val = val_data
     X_test, Y_test = test_data
     print(X_train.shape, Y_train.shape, X_val.shape, Y_val.shape, X_test.shape, Y_test.shape)
     # X_test, Y_test = S_test[0]
-    plt.plot(Y_train[:, 5])
+    plt.plot(Y_test[:, 5])
     plt.show()
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 from gpflow.likelihoods import Likelihood, MonteCarloLikelihood, QuadratureLikelihood
 from tensorflow.python.framework.ops import Tensor
 import tensorflow as tf
-from gpflow.quadrature import NDiagGHQuadrature
+from gpflow.quadrature import NDiagGHQuadrature, ndiag_mc, ndiagquad
 import math
 import numpy as np
 from scipy.stats import norm
@@ -99,91 +99,51 @@ class LogNormalMCLikelihood(MonteCarloLikelihood):
 class LogNormalLikelihood(Likelihood):
     def __init__(self, input_dim, latent_dim, observation_dim) -> None:
         super().__init__(input_dim, latent_dim, observation_dim)
-        self.eps = tf.cast(1e-5, tf.float64)
-        self.quadrature = NDiagGHQuadrature(dim=1, n_gh=50)
+        self.eps = tf.cast(1e-6, tf.float64)
 
     def _log_prob(self, X, F, Y) -> Tensor:
-        total_terms = 0
-        # Loop through each observation dimension d
-        for d in range(self.observation_dim):
-            # Indices for mu and sigma of f_{d,1} and f_{d,2}
-            idx_f_d_1 = d * 2
-            idx_f_d_2 = idx_f_d_1 + 1
-            
-            f_d_1 = F[..., idx_f_d_1:idx_f_d_1+1]
-            f_d_2 = F[..., idx_f_d_2:idx_f_d_2+1]
-
-            Y_d = Y[..., d:d+1]
-            logYd = tf.math.log(Y_d + self.eps)
-            term = tf.math.log(2*tf.cast(math.pi, tf.float64)) + 2*logYd + f_d_2 + tf.math.square(logYd - f_d_1) * tf.math.exp(-f_d_2)
-            total_terms += term
-        
-        
-        log_probability_density = -0.5 * tf.reduce_sum(total_terms, axis=-1)
-
-        return log_probability_density
+        """
+        Computes the log probability density log p(Y|F) for a log-normal distribution.
+        """
+        Fd1 = F[..., ::2]  # Extract even indices - mean
+        Fd2 = F[..., 1::2]  # Extract odd indices - std deviation
+        log_y = tf.math.log(tf.maximum(Y, self.eps))
+        return -0.5 * tf.reduce_sum(
+            tf.math.log(2 * tf.cast(math.pi, tf.float64)) + 2 * log_y + Fd2 + (log_y - Fd1) ** 2 / tf.exp(Fd2),
+            axis=-1
+        )
     
     def _variational_expectations(self, X, Fmu, Fvar, Y) -> Tensor:
-        total_terms = 0
-        # Loop through each observation dimension d
-        for d in range(self.observation_dim):
-            # Indices for mu and sigma of f_{d,1} and f_{d,2}
-            idx_f_d_1 = d * 2
-            idx_f_d_2 = idx_f_d_1 + 1
-            
-            # Extracting the relevant slices for f_{d,1} (mean and variance)
-            mu_f_d_1 = Fmu[..., idx_f_d_1:idx_f_d_1+1]
-            sigma_f_d_1 = Fvar[..., idx_f_d_1:idx_f_d_1+1]
-            
-            # Extracting the relevant slices for f_{d,2} (mean and variance)
-            mu_f_d_2 = Fmu[..., idx_f_d_2:idx_f_d_2+1]
-            sigma_f_d_2 = Fvar[..., idx_f_d_2:idx_f_d_2+1]
-            
-            Y_d = Y[..., d:d+1]
-            # Compute the terms according to the expected log density formula for each observation dimension d
-            logYd = tf.math.log(Y_d + self.eps)
-            term = tf.math.log(2 * tf.cast(math.pi, tf.float64)) + 2 * logYd + mu_f_d_2 + tf.math.exp(-mu_f_d_2 + sigma_f_d_2 / 2) * (
-                tf.math.square(logYd - mu_f_d_1) + sigma_f_d_1)
-            
-            # Accumulate the terms from all observation dimensions
-            total_terms += term
-
-        # Final expected log density, summing over all dimensions and data points
-        expected_log_density = -0.5 * tf.reduce_sum(total_terms, axis=-1)
-
-        return expected_log_density
+        Fd1mu = Fmu[..., ::2] 
+        Fd2mu = Fmu[..., 1::2]
+        Fd1var = Fvar[..., ::2] 
+        Fd2var = Fvar[..., 1::2] 
+        log_y = tf.math.log(tf.maximum(Y, self.eps))
+        return -0.5 * tf.reduce_sum(
+            tf.math.log(2 * tf.cast(math.pi, tf.float64)) + 2 * log_y + Fd2mu + tf.exp(-Fd2mu + Fd2var / 2) * ((log_y - Fd1mu) ** 2 + Fd1var),
+            axis=-1
+        )
         
 
     def _predict_mean_and_var(self, X, Fmu, Fvar):
+        Fd1mu = Fmu[..., ::2] 
+        Fd2mu = Fmu[..., 1::2]
+        Fd1var = Fvar[..., ::2] 
+        Fd2var = Fvar[..., 1::2]
+
         def integrand_mean(f):
-            return tf.exp(0.5*tf.exp(f))
+            return tf.exp(0.5 * tf.exp(f))
 
         def integrand_variance(f):
-            return tf.exp(2*tf.exp(f))
+            return tf.exp(2 * tf.exp(f))
 
-        predicted_means = []
-        predicted_variances = []
+        # Vectorized computation of predicted means and variances
+        pred_mean = tf.exp(Fd1mu + 0.5 * Fd1var) * ndiagquad(integrand_mean, 150, Fd2mu, Fd2var)
+        pred_var = tf.exp(2 * Fd1mu + 2 * Fd1var) * ndiagquad(integrand_variance, 150, Fd2mu, Fd2var) - pred_mean ** 2
 
-        for d in range(self.observation_dim):
-            idx_mu_f_d_1 = d * 2
-            idx_mu_f_d_2 = idx_mu_f_d_1 + 1
+        # Since `pred_mean` and `pred_var` are already concatenated across the observation dimension, no need for further concatenation
+        return pred_mean, pred_var
 
-            mu_f_d_1 = Fmu[..., idx_mu_f_d_1:idx_mu_f_d_1+1]
-            var_f_d_1 = Fvar[..., idx_mu_f_d_1:idx_mu_f_d_1+1]
-            mu_f_d_2 = Fmu[..., idx_mu_f_d_2:idx_mu_f_d_2+1]
-            var_f_d_2 = Fvar[..., idx_mu_f_d_2:idx_mu_f_d_2+1]
-
-            pred_mean = tf.exp(mu_f_d_1 + 0.5 * var_f_d_1) * self.quadrature(integrand_mean, mu_f_d_2, var_f_d_2)
-            pred_var = tf.exp(2 * mu_f_d_1 + 2 * var_f_d_1) * self.quadrature(integrand_variance, mu_f_d_2, var_f_d_2)
-
-            predicted_means.append(pred_mean)
-            predicted_variances.append(pred_var - tf.square(pred_mean))
-
-        predicted_means = tf.concat(predicted_means, axis=-1)
-        predicted_variances = tf.concat(predicted_variances, axis=-1)
-
-        return predicted_means, predicted_variances
-        
     def _predict_log_density(self, X, Fmu, Fvar, Y):
         raise NotImplementedError
 

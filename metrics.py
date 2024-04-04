@@ -38,15 +38,15 @@ def train_model(model, data, validation_data, epochs=100, log_freq=20, patience=
     loss_fn = model.training_loss_closure(data, compile=True)
     val_loss_fn = model.training_loss_closure(validation_data, compile=True)
 
-    gpf.utilities.set_trainable(model.q_mu, False)
-    gpf.utilities.set_trainable(model.q_sqrt, False)
+    # gpf.utilities.set_trainable(model.q_mu, False)
+    # gpf.utilities.set_trainable(model.q_sqrt, False)
   
 
-    variational_vars = [(model.q_mu, model.q_sqrt)]
-    natgrad_opt = gpf.optimizers.NaturalGradient(gamma=0.01)
+    # variational_vars = [(model.q_mu, model.q_sqrt)]
+    # natgrad_opt = gpf.optimizers.NaturalGradient(gamma=0.005)
 
     adam_vars = model.trainable_variables
-    adam_opt = tf.optimizers.Adam(0.01)
+    adam_opt = tf.optimizers.Adam(0.005)
 
     # Early stopping
     best_val_loss = float('inf')
@@ -54,7 +54,7 @@ def train_model(model, data, validation_data, epochs=100, log_freq=20, patience=
 
     @tf.function
     def optimisation_step():
-        natgrad_opt.minimize(loss_fn, variational_vars)
+        # natgrad_opt.minimize(loss_fn, variational_vars)
         adam_opt.minimize(loss_fn, adam_vars)
 
     for epoch in range(1, epochs + 1):

@@ -28,10 +28,10 @@ def build_model(train_data):
     ind_process_dim = latent_dim  # Number of independent processes in the coregionalization model
 
     # Initialize the likelihood with appropriate dimensions
-    likelihood = LogNormalMCLikelihood(input_dim, latent_dim, observation_dim)
+    likelihood = LogNormalLikelihood(input_dim, latent_dim, observation_dim)
     
     # Create a list of base kernels for the Linear Coregionalization model
-    kern_list = [gpf.kernels.SquaredExponential(lengthscales=np.random.rand(input_dim)+0.01) for _ in range(ind_process_dim)]
+    kern_list = [gpf.kernels.SquaredExponential(lengthscales=(np.random.rand(input_dim)+0.01)*150) for _ in range(ind_process_dim)]
     
     # Initialize the mixing matrix for the coregionalization kernel
     kernel = gpf.kernels.LinearCoregionalization(
@@ -43,7 +43,7 @@ def build_model(train_data):
     print("Latent dim:", likelihood.latent_dim)
 
     # Number of inducing points
-    M = 15
+    M = 50
     
     Zinit = np.random.rand(M, input_dim)
     # initialization of inducing input locations, one set of locations per output
@@ -77,19 +77,20 @@ def build_model(train_data):
 def main():
     train_data, val_data, test_data = get_uv_data()
     X_test, Y_test = test_data
+    X_train, Y_train = train_data
 
     model = build_model(train_data)
-
-    train_model(model, train_data, validation_data=val_data, epochs=5000, patience=50)
+    # gpf.utilities.set_trainable(model.kernel.W, False)
+    train_model(model, train_data, validation_data=val_data, epochs=5000, patience=100)
     # print_summary(model)
 
     Y_mean, Y_var = model.predict_y(X_test)
-    print(Y_var)
+    # print(Y_var)
     X_range = range(X_test.shape[0])
 
     observation_dim = Y_test.shape[1]
-    y_lower = Y_mean - 1.96 * np.sqrt(Y_var)
-    y_upper = Y_mean + 1.96 * np.sqrt(Y_var)
+    y_lower = Y_mean - 1.0 * np.sqrt(Y_var)
+    y_upper = Y_mean + 1.0 * np.sqrt(Y_var)
 
     # Calculate the number of rows and columns for the subplot matrix
     n_cols = int(np.ceil(np.sqrt(observation_dim)))
@@ -103,6 +104,47 @@ def main():
     for d in range(observation_dim):
         ax_flat[d].scatter(X_range, Y_test[:, d], c="k", label="Test Data")
         ax_flat[d].plot(X_range, Y_mean[:, d], label="Predicted Mean")
+        # ax_flat[d].plot(X_range, np.sqrt(Y_var[:, d]), label="Predicted Std")
+        ax_flat[d].fill_between(
+        X_range, y_lower[:, d], y_upper[:, d], color="C0", alpha=0.1, label="+/- Std"
+        )
+        ax_flat[d].legend()
+        ax_flat[d].set_ylabel("Useful Volume")
+        ax_flat[d].set_xlabel("Days")
+        # ax_flat[d].set_xticks([])
+        # ax_flat[d].set_yticks([])
+        ax_flat[d].grid(True)
+
+
+
+
+    # Hide any unused subplots
+    for d in range(observation_dim, n_rows*n_cols):
+        ax_flat[d].axis('off')
+
+    plt.tight_layout()
+    plt.savefig("predictions_test.png")
+    plt.close()
+
+    nlogpred = negatve_log_predictive_density(model, X_test, Y_test)
+    print(nlogpred)
+
+######################################3
+    Y_mean, Y_var = model.predict_y(X_train)
+    # print(Y_var)
+    X_range = range(X_train.shape[0])
+
+    observation_dim = Y_test.shape[1]
+    y_lower = Y_mean - 1.0 * np.sqrt(Y_var)
+    y_upper = Y_mean + 1.0 * np.sqrt(Y_var)
+    fig, ax = plt.subplots(n_rows, n_cols, figsize=(5*n_cols, 5*n_rows))
+
+    # Flatten the ax array for easy indexing
+    ax_flat = ax.flatten()
+
+    for d in range(observation_dim):
+        ax_flat[d].scatter(X_range, Y_train[:, d], c="k", label="Test Data")
+        ax_flat[d].plot(X_range, Y_mean[:, d], label="Predicted Mean")
         ax_flat[d].legend()
         ax_flat[d].fill_between(
         X_range, y_lower[:, d], y_upper[:, d], color="C0", alpha=0.1, label="CI"
@@ -114,7 +156,7 @@ def main():
         ax_flat[d].axis('off')
 
     plt.tight_layout()
-    plt.savefig("predictions.png")
+    plt.savefig("predictions_train.png")
     plt.close()
 
     nlogpred = negatve_log_predictive_density(model, X_test, Y_test)
