@@ -3,9 +3,10 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import gpflow as gpf
 import seaborn as sns
-from likelihoods import LogNormalLikelihood, LogNormalMCLikelihood, LogNormalQuadLikelihood
+from likelihoods import LogNormalLikelihood, LogNormalMCLikelihood, LogNormalQuadLikelihood, HeteroskedasticLikelihood
 from data_exploration import get_uv_data
 from gpflow.utilities import print_summary
+import tensorflow_probability as tfp
 from metrics import negatve_log_predictive_density, train_model
 
 def build_model(train_data):
@@ -25,17 +26,21 @@ def build_model(train_data):
     
     # Determine dimensions for the latenLogNormalLikelihoodt variables and inducing points
     latent_dim = 2 * observation_dim
-    ind_process_dim = latent_dim  # Number of independent processes in the coregionalization model
+    ind_process_dim = 4  # Number of independent processes in the coregionalization model
 
     # Initialize the likelihood with appropriate dimensions
-    likelihood = LogNormalLikelihood(input_dim, latent_dim, observation_dim)
-    
+    # likelihood = LogNormalLikelihood(input_dim, latent_dim, observation_dim)
+    likelihood = likelihood = HeteroskedasticLikelihood(
+        distribution_class=tfp.distributions.Gamma,
+        param1_transform=tfp.bijectors.Exp(),
+        param2_transform=tfp.bijectors.Exp()
+    )
     # Create a list of base kernels for the Linear Coregionalization model
-    kern_list = [gpf.kernels.SquaredExponential(lengthscales=(np.random.rand(input_dim)+0.01)*150) for _ in range(ind_process_dim)]
+    kern_list = [gpf.kernels.SquaredExponential() + gpf.kernels.Linear() + gpf.kernels.Constant() for _ in range(ind_process_dim)]
     
     # Initialize the mixing matrix for the coregionalization kernel
     kernel = gpf.kernels.LinearCoregionalization(
-        kern_list, W=np.eye(latent_dim)
+        kern_list, W=np.eye(latent_dim, ind_process_dim)
     )
     
     # Logging for debugging and verification purposes
@@ -58,7 +63,15 @@ def build_model(train_data):
     # )
 
     # Initialize the mean and variance of the variational posterior
+    # q_mu1 = -np.ones((M, ind_process_dim // 2))
+    # q_mu2 = -np.ones((M, ind_process_dim // 2))
+
+    # Initialize Fmu with zeros
     q_mu = np.zeros((M, ind_process_dim))
+
+    # Populate Fmu with q_mu1 and q_mu2 at even and odd indices respectively
+    # q_mu[..., ::2] = q_mu1
+    # q_mu[..., 1::2] = q_mu2
     q_sqrt = np.repeat(np.eye(M)[None, ...], ind_process_dim, axis=0) * 1.0
 
     # Construct the SVGP model with the specified components
@@ -75,6 +88,12 @@ def build_model(train_data):
 
 
 def main():
+    # Set seed for NumPy
+    np.random.seed(0)
+
+    # Set seed for GPflow
+    tf.random.set_seed(0)
+
     train_data, val_data, test_data = get_uv_data()
     X_test, Y_test = test_data
     X_train, Y_train = train_data
@@ -97,7 +116,7 @@ def main():
     n_rows = int(np.ceil(observation_dim / n_cols))
 
     fig, ax = plt.subplots(n_rows, n_cols, figsize=(5*n_cols, 5*n_rows))
-
+    ax = np.array([ax]) if not isinstance(ax, np.ndarray) else ax
     # Flatten the ax array for easy indexing
     ax_flat = ax.flatten()
 
@@ -138,6 +157,7 @@ def main():
     y_lower = Y_mean - 1.0 * np.sqrt(Y_var)
     y_upper = Y_mean + 1.0 * np.sqrt(Y_var)
     fig, ax = plt.subplots(n_rows, n_cols, figsize=(5*n_cols, 5*n_rows))
+    ax = np.array([ax]) if not isinstance(ax, np.ndarray) else ax
 
     # Flatten the ax array for easy indexing
     ax_flat = ax.flatten()

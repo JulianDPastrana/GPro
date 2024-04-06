@@ -3,18 +3,23 @@ import gpflow as gpf
 import matplotlib.pyplot as plt
 import numpy as np
 from likelihoods import LogNormalLikelihood
+from gpflow.quadrature import ndiag_mc, ndiagquad, mvnquad
 
 def negatve_log_predictive_density(model, X_test, Y_test, n_samples=500):
         F_samples = model.predict_f_samples(X_test, n_samples)
         # monte-carlazo
         log_pred = model.likelihood.log_prob(X=X_test, F=F_samples, Y=Y_test)
         nlogpred = -tf.reduce_sum(log_pred) / n_samples
+        
         return nlogpred
 
 def mean_squared_error(model, X_test, Y_test):
-     Y_mean, _ = model.predict_y(X_test)
-     mse = tf.reduce_mean(tf.square(Y_test - Y_mean))
-     return mse
+    Y_mean, _ = model.predict_y(X_test)
+    print("Anoter NaNs", np.sum(~np.isfinite(Y_mean.numpy())))
+    print("Anoter NaNs but test", np.sum(~np.isfinite(Y_test)))
+    mse = tf.reduce_mean(tf.square(Y_test - Y_mean))
+    print("Anoter NaNs but mse", np.sum(~np.isfinite(mse.numpy())))
+    return mse
 
 def mean_absolute_error(model, X_test, Y_test):
      Y_mean, _ = model.predict_y(X_test)
@@ -24,7 +29,7 @@ def mean_absolute_error(model, X_test, Y_test):
 
 def train_model(model, data, validation_data, epochs=100, log_freq=20, patience=10, verbose=True):
     """
-    Trains the model for a specified number of epochs with early stopping.
+    Trains the model for a specified number of epochs with early stopping and saves the best model.
     
     Parameters:
     - model: The GPflow model to train.
@@ -37,34 +42,39 @@ def train_model(model, data, validation_data, epochs=100, log_freq=20, patience=
     """
     loss_fn = model.training_loss_closure(data, compile=True)
     val_loss_fn = model.training_loss_closure(validation_data, compile=True)
-
     # gpf.utilities.set_trainable(model.q_mu, False)
     # gpf.utilities.set_trainable(model.q_sqrt, False)
-  
-
     # variational_vars = [(model.q_mu, model.q_sqrt)]
     # natgrad_opt = gpf.optimizers.NaturalGradient(gamma=0.005)
-
     adam_vars = model.trainable_variables
     adam_opt = tf.optimizers.Adam(0.005)
+    grads, variables = zip(*adam_opt.compute_gradients(loss_fn, adam_vars))
+    grads, _ = tf.clip_by_global_norm(grads, 1e3)
+    adam_opt.apply_gradients(zip(grads, variables))
 
-    # Early stopping
+    # Setup checkpointing
+    checkpoint = tf.train.Checkpoint(optimizer=adam_opt, model=model)
+    manager = tf.train.CheckpointManager(checkpoint, './tf_ckpts', max_to_keep=1)
+
     best_val_loss = float('inf')
     epochs_without_improvement = 0
 
     @tf.function
     def optimisation_step():
-        # natgrad_opt.minimize(loss_fn, variational_vars)
         adam_opt.minimize(loss_fn, adam_vars)
+        # natgrad_opt.minimize(loss_fn, variational_vars)
 
     for epoch in range(1, epochs + 1):
         optimisation_step()
 
-        # Check validation loss for early stopping
         val_loss = val_loss_fn().numpy()
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             epochs_without_improvement = 0
+            # Save the model as it's the best so far
+            save_path = manager.save()
+            if False:
+                print(f"Saved checkpoint for epoch {epoch}: {save_path}")
         else:
             epochs_without_improvement += 1
 
@@ -77,6 +87,10 @@ def train_model(model, data, validation_data, epochs=100, log_freq=20, patience=
             train_loss = loss_fn().numpy()
             print(f"Epoch {epoch} - Training Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}")
 
+    # Optionally, restore the best model
+    checkpoint.restore(manager.latest_checkpoint)
+    if verbose and manager.latest_checkpoint:
+        print(f"Restored best model from {manager.latest_checkpoint}")
 
 
 def create_independent_model(observation_dim, input_dim, num_inducing):

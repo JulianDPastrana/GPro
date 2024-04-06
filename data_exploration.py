@@ -76,8 +76,19 @@ def streamflow_dataset():
                ]
                ]
 
+def thermo_dataset():
+    df = pd.read_excel(
+        io="./termo_gen.xlsx",
+        header=0,
+        index_col=0,
+        parse_dates=True,
+    )
+    df = df.clip(lower=0)
+    # print(df.describe().T)
+    return df[["Total [Gwh]"]]
+
 def get_uv_data():
-    df = streamflow_dataset()
+    df = thermo_dataset()
     df_norm = df.copy()
     scaler = MinMaxScaler()
     df_norm[df.columns] = scaler.fit_transform(df)
@@ -94,22 +105,24 @@ def get_uv_data():
     nan_rows = nan_rows_X | nan_rows_Y   
     # Filter out the rows with NaNs
     X_clean, Y_clean = X[~nan_rows,:], Y[~nan_rows,:]
+    Y_clean = np.maximum(Y_clean, 1e-3)
     # Split into train and test sets
     N = Y_clean.shape[0]
-    train_data = (X_clean[0:int(N*0.85)], Y_clean[0:int(N*0.85)])
-    val_data = (X_clean[int(N*0.85):int(N*0.9)], Y_clean[int(N*0.85):int(N*0.9)])
-    test_data = (X_clean[int(N*0.9):], Y_clean[int(N*0.9):])
+    train_data = (X_clean[0:int(N*0.9)], Y_clean[0:int(N*0.9)])
+    val_data = (X_clean[int(N*0.9):int(N*0.95)], Y_clean[int(N*0.9):int(N*0.95)])
+    test_data = (X_clean[int(N*0.95):], Y_clean[int(N*0.95):])
     return train_data, val_data, test_data
 
 def main():
     train_data, val_data, test_data = get_uv_data()
     X_train, Y_train = train_data
-    print(np.isnan(Y_train).sum())
+
     X_val, Y_val = val_data
     X_test, Y_test = test_data
+    print(np.sum(~np.isfinite(Y_train)))
     print(X_train.shape, Y_train.shape, X_val.shape, Y_val.shape, X_test.shape, Y_test.shape)
     # X_test, Y_test = S_test[0]
-    plt.plot(Y_test[:, 5])
+    plt.plot(Y_test[:, 0])
     plt.show()
 
 if __name__ == "__main__":

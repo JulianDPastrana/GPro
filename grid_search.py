@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import gpflow as gpf
 import pandas as pd
-from likelihoods import LogNormalLikelihood
+from likelihoods import LogNormalLikelihood, LogNormalMCLikelihood
 from data_exploration import get_uv_data
 from sklearn.model_selection import TimeSeriesSplit
 from itertools import product
@@ -10,10 +10,10 @@ from metrics import *
 
 def chained_corr(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing):
     kern_list = [
-        gpf.kernels.SquaredExponential(lengthscales=[1 for i in range(input_dim)]) for _ in range(ind_process_dim)
+        gpf.kernels.SquaredExponential() + gpf.kernels.Linear() + gpf.kernels.Constant() for _ in range(ind_process_dim)
     ]
     kernel = gpf.kernels.LinearCoregionalization(
-        kern_list, W=np.random.normal(size=(latent_dim, ind_process_dim), scale=0.01)+np.eye(latent_dim, ind_process_dim)
+        kern_list, W=np.eye(latent_dim, ind_process_dim)
     )
     Zinit = np.random.rand(num_inducing, input_dim)
     Zs = [Zinit.copy() for _ in range(ind_process_dim)]
@@ -28,22 +28,19 @@ def chained_corr(input_dim, latent_dim, observation_dim, ind_process_dim, num_in
         q_mu=q_mu,
         q_sqrt=q_sqrt
     )
-#     kern_list = [
-#     gpf.kernels.SquaredExponential(lengthscales=[1 for i in range(input_dim)]) for _ in range(latent_dim)
-# ]
-#     kernel = gpf.kernels.SeparateIndependent(kern_list)
-#     model = gpf.models.SVGP(
-#         kernel=kernel,
-#         likelihood=LogNormalLikelihood(input_dim, latent_dim, observation_dim),
-#         inducing_variable=iv,
-#         num_latent_gps=latent_dim
-#     )
+
     return model
 
 
-# Get train and test datasets
+# Set seed for NumPy
+np.random.seed(0)
+
+# Set seed for GPflow
+tf.random.set_seed(0)
+
 train_data, val_data, test_data = get_uv_data()
-X_train, Y_train = test_data
+X_test, Y_test = test_data
+X_train, Y_train = train_data
 
 
 n_samples, input_dim = X_train.shape
@@ -52,8 +49,8 @@ observation_dim = Y_train.shape[1]
 # Determine dimensions for the latent variables and inducing points
 latent_dim = 2 * observation_dim
 # Define the grid of parameters to search
-num_inducing_values = [20, 50, 100]
-ind_process_dim_values = [2, 5, 10]
+num_inducing_values = [20, 50, 100, 150]
+ind_process_dim_values = [1, 2, 4, 8]
 n_splits = 5  # Number of splits for TimeSeriesSplit
 
 # Initialize TimeSeriesSplit

@@ -9,6 +9,8 @@ from scipy.special import roots_hermite
 import tensorflow_probability as tfp
 from scipy.special import roots_legendre
 import gpflow as gpf
+from check_shapes import check_shapes
+from gpflow.likelihoods import MultiLatentTFPConditional
 
 class LogNormalQuadLikelihood(QuadratureLikelihood):
     def __init__(self, input_dim, latent_dim, observation_dim) -> None:
@@ -64,15 +66,13 @@ class LogNormalMCLikelihood(MonteCarloLikelihood):
         """
         Computes the log probability density log p(Y|F) for a log-normal distribution.
         """
-        f_mu = F[..., ::2]  # Extract even indices - mean
-        f_sigma = F[..., 1::2]  # Extract odd indices - std deviation
-
+        Fd1 = F[..., ::2]  # Extract even indices - mean
+        Fd2 = F[..., 1::2]  # Extract odd indices - std deviation
         log_y = tf.math.log(tf.maximum(Y, self.eps))
-        term1 = tf.reduce_sum(-0.5 * ((log_y - f_mu) ** 2) / tf.exp(f_sigma), axis=-1)
-        term2 = tf.reduce_sum(-0.5 * tf.math.log(2. * math.pi * tf.exp(f_sigma)), axis=-1)
-        log_prob = term1 + term2
-
-        return log_prob
+        return -0.5 * tf.reduce_sum(
+            tf.math.log(2 * tf.cast(math.pi, tf.float64)) + 2 * log_y + tf.math.log(tf.math.softplus(Fd2)) + (log_y - Fd1) ** 2 / tf.math.softplus(Fd2),
+            axis=-1
+        )
 
     def _conditional_mean(self, X, F) -> tf.Tensor:
         """
@@ -82,7 +82,7 @@ class LogNormalMCLikelihood(MonteCarloLikelihood):
         f_sigma = F[..., 1::2]  # Variance parameters
         
         # For log-normal, E[Y|F] = exp(mu + sigma^2 / 2)
-        conditional_mean = tf.exp(f_mu + 0.5 * tf.exp(f_sigma))
+        conditional_mean = tf.exp(f_mu + 0.5 * tf.math.softplus(f_sigma))
         return conditional_mean
 
     def _conditional_variance(self, X, F) -> tf.Tensor:
@@ -93,7 +93,7 @@ class LogNormalMCLikelihood(MonteCarloLikelihood):
         f_sigma = F[..., 1::2]
         
         # For log-normal, Var[Y|F] = (exp(sigma^2) - 1) * exp(2 * mu + sigma^2)
-        conditional_variance = (tf.exp(tf.exp(f_sigma)) - 1) * tf.exp(2 * f_mu + tf.exp(f_sigma))
+        conditional_variance = (tf.exp(tf.math.softplus(f_sigma)) - 1) * tf.exp(2 * f_mu + tf.math.softplus(f_sigma))
         return conditional_variance
 
 class LogNormalLikelihood(Likelihood):
@@ -128,8 +128,8 @@ class LogNormalLikelihood(Likelihood):
     def _predict_mean_and_var(self, X, Fmu, Fvar):
         Fd1mu = Fmu[..., ::2] 
         Fd2mu = Fmu[..., 1::2]
-        Fd1var = Fvar[..., ::2] 
-        Fd2var = Fvar[..., 1::2]
+        Fd1var = Fvar[..., ::2] + self.eps
+        Fd2var = Fvar[..., 1::2] + self.eps
 
         def integrand_mean(f):
             return tf.exp(0.5 * tf.exp(f))
@@ -139,11 +139,39 @@ class LogNormalLikelihood(Likelihood):
 
         # Vectorized computation of predicted means and variances
         pred_mean = tf.exp(Fd1mu + 0.5 * Fd1var) * ndiagquad(integrand_mean, 150, Fd2mu, Fd2var)
-        pred_var = tf.exp(2 * Fd1mu + 2 * Fd1var) * ndiagquad(integrand_variance, 150, Fd2mu, Fd2var) - pred_mean ** 2
+        pred_var = tf.exp(2 * Fd1mu + 2 * Fd1var) * ndiagquad(integrand_variance, 150, Fd2mu, Fd2var) - tf.square(pred_mean)
 
+        print("NaNs", np.isnan(pred_mean.numpy()).sum())
         # Since `pred_mean` and `pred_var` are already concatenated across the observation dimension, no need for further concatenation
         return pred_mean, pred_var
 
     def _predict_log_density(self, X, Fmu, Fvar, Y):
         raise NotImplementedError
 
+
+
+class HeteroskedasticLikelihood(MultiLatentTFPConditional):
+
+    def __init__(
+        self,
+        distribution_class,
+        param1_transform,
+        param2_transform,
+        # **kwargs: Any,
+    ) -> None:
+
+        self.param1_transform = param1_transform
+        self.param2_transform = param2_transform
+        @check_shapes(
+            "F: [batch..., 2]",
+        )
+        def conditional_distribution(F) -> tfp.distributions.Distribution:
+            param1 = self.param1_transform(F[..., :1])
+            param2 = self.param2_transform(F[..., 1:])
+            return distribution_class(param1, param2)
+
+        super().__init__(
+            latent_dim=2,
+            conditional_distribution=conditional_distribution,
+            # **kwargs,
+        )
