@@ -53,8 +53,8 @@ def train_model(model, data, validation_data, epochs=100, log_freq=20, patience=
     adam_opt.apply_gradients(zip(grads, variables))
 
     # Setup checkpointing
-    checkpoint = tf.train.Checkpoint(optimizer=adam_opt, model=model)
-    manager = tf.train.CheckpointManager(checkpoint, './tf_ckpts', max_to_keep=1)
+    # checkpoint = tf.train.Checkpoint(optimizer=adam_opt, model=model)
+    # manager = tf.train.CheckpointManager(checkpoint, './tf_ckpts', max_to_keep=1)
 
     best_val_loss = float('inf')
     epochs_without_improvement = 0
@@ -72,7 +72,7 @@ def train_model(model, data, validation_data, epochs=100, log_freq=20, patience=
             best_val_loss = val_loss
             epochs_without_improvement = 0
             # Save the model as it's the best so far
-            save_path = manager.save()
+            # save_path = manager.save()
             if False:
                 print(f"Saved checkpoint for epoch {epoch}: {save_path}")
         else:
@@ -88,9 +88,9 @@ def train_model(model, data, validation_data, epochs=100, log_freq=20, patience=
             print(f"Epoch {epoch} - Training Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}")
 
     # Optionally, restore the best model
-    checkpoint.restore(manager.latest_checkpoint)
-    if verbose and manager.latest_checkpoint:
-        print(f"Restored best model from {manager.latest_checkpoint}")
+    # checkpoint.restore(manager.latest_checkpoint
+    # if verbose and manager.latest_checkpoint:
+    #     print(f"Restored best model from {manager.latest_checkpoint}")
 
 
 def create_independent_model(observation_dim, input_dim, num_inducing):

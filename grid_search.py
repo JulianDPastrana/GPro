@@ -2,16 +2,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 import gpflow as gpf
 import pandas as pd
-from likelihoods import LogNormalLikelihood, LogNormalMCLikelihood
+from likelihoods import LogNormalLikelihood, LogNormalMCLikelihood, HeteroskedasticLikelihood
 from data_exploration import get_uv_data
 from sklearn.model_selection import TimeSeriesSplit
 from itertools import product
+import tensorflow_probability as tfp
 from metrics import *
 
 def chained_corr(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing):
-    kern_list = [
-        gpf.kernels.SquaredExponential() + gpf.kernels.Linear() + gpf.kernels.Constant() for _ in range(ind_process_dim)
-    ]
+    # Create a list of base kernels for the Linear Coregionalization model
+    kern_list = [gpf.kernels.SquaredExponential() + gpf.kernels.Linear() + gpf.kernels.Constant() for _ in range(ind_process_dim)]
+    
+    # Initialize the mixing matrix for the coregionalization kernel
     kernel = gpf.kernels.LinearCoregionalization(
         kern_list, W=np.eye(latent_dim, ind_process_dim)
     )
@@ -21,9 +23,14 @@ def chained_corr(input_dim, latent_dim, observation_dim, ind_process_dim, num_in
     iv = gpf.inducing_variables.SeparateIndependentInducingVariables(iv_list)
     q_mu = np.zeros((num_inducing, ind_process_dim))
     q_sqrt = np.repeat(np.eye(num_inducing)[None, ...], ind_process_dim, axis=0) * 1.0
+    likelihood = likelihood = HeteroskedasticLikelihood(
+        distribution_class=tfp.distributions.Gamma,
+        param1_transform=tfp.bijectors.Exp(),
+        param2_transform=tfp.bijectors.Exp()
+    )
     model = gpf.models.SVGP(
         kernel=kernel,
-        likelihood=LogNormalLikelihood(input_dim, latent_dim, observation_dim),
+        likelihood=likelihood,
         inducing_variable=iv,
         q_mu=q_mu,
         q_sqrt=q_sqrt
@@ -50,7 +57,7 @@ observation_dim = Y_train.shape[1]
 latent_dim = 2 * observation_dim
 # Define the grid of parameters to search
 num_inducing_values = [20, 50, 100, 150]
-ind_process_dim_values = [1, 2, 4, 8]
+ind_process_dim_values = [2, 4, 8]
 n_splits = 5  # Number of splits for TimeSeriesSplit
 
 # Initialize TimeSeriesSplit
@@ -72,7 +79,7 @@ for num_inducing, ind_process_dim in product(num_inducing_values, ind_process_di
         Y_train_fold, Y_test_fold = Y_train[train_index], Y_train[test_index]
 
         model = chained_corr(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing)
-        train_model(model, (X_train_fold, Y_train_fold), validation_data=(X_test_fold, Y_test_fold), epochs=500, verbose=False, patience=1000)
+        train_model(model, (X_train_fold, Y_train_fold), validation_data=(X_test_fold, Y_test_fold), epochs=5000, verbose=False, patience=100)
 
         nlogpred = negatve_log_predictive_density(model, X_test_fold, Y_test_fold)
         mse = mean_squared_error(model, X_test_fold, Y_test_fold)

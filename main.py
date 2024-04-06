@@ -26,7 +26,7 @@ def build_model(train_data):
     
     # Determine dimensions for the latenLogNormalLikelihoodt variables and inducing points
     latent_dim = 2 * observation_dim
-    ind_process_dim = 4  # Number of independent processes in the coregionalization model
+    ind_process_dim = 8  # Number of independent processes in the coregionalization model
 
     # Initialize the likelihood with appropriate dimensions
     # likelihood = LogNormalLikelihood(input_dim, latent_dim, observation_dim)
@@ -48,7 +48,7 @@ def build_model(train_data):
     print("Latent dim:", likelihood.latent_dim)
 
     # Number of inducing points
-    M = 50
+    M = 20
     
     Zinit = np.random.rand(M, input_dim)
     # initialization of inducing input locations, one set of locations per output
