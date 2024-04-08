@@ -25,8 +25,8 @@ def chained_corr(input_dim, latent_dim, observation_dim, ind_process_dim, num_in
     q_sqrt = np.repeat(np.eye(num_inducing)[None, ...], ind_process_dim, axis=0) * 1.0
     likelihood = likelihood = HeteroskedasticLikelihood(
         distribution_class=tfp.distributions.Gamma,
-        param1_transform=tfp.bijectors.Exp(),
-        param2_transform=tfp.bijectors.Exp()
+        param1_transform=tfp.bijectors.Softplus(),
+        param2_transform=tfp.bijectors.Softplus()
     )
     model = gpf.models.SVGP(
         kernel=kernel,
@@ -57,7 +57,7 @@ observation_dim = Y_train.shape[1]
 latent_dim = 2 * observation_dim
 # Define the grid of parameters to search
 num_inducing_values = [20, 50, 100, 150]
-ind_process_dim_values = [2, 4, 8]
+ind_process_dim_values = [2, 4, 8, 16]
 n_splits = 5  # Number of splits for TimeSeriesSplit
 
 # Initialize TimeSeriesSplit

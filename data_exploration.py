@@ -92,8 +92,8 @@ def get_uv_data():
     df_norm = df.copy()
     scaler = MinMaxScaler()
     df_norm[df.columns] = scaler.fit_transform(df)
-    # print(df_norm.describe().T)
-    # print(df_norm.info())
+    print(df.describe().T)
+    print(df.info())
 
     window = WindowGenerator(1, 1, 1, df_norm.columns)
 
@@ -111,10 +111,10 @@ def get_uv_data():
     train_data = (X_clean[0:int(N*0.9)], Y_clean[0:int(N*0.9)])
     val_data = (X_clean[int(N*0.9):int(N*0.95)], Y_clean[int(N*0.9):int(N*0.95)])
     test_data = (X_clean[int(N*0.95):], Y_clean[int(N*0.95):])
-    return train_data, val_data, test_data
+    return (train_data, val_data, test_data), scaler
 
 def main():
-    train_data, val_data, test_data = get_uv_data()
+    (train_data, val_data, test_data), scaler = get_uv_data()
     X_train, Y_train = train_data
 
     X_val, Y_val = val_data

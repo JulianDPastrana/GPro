@@ -3,11 +3,13 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import gpflow as gpf
 import seaborn as sns
+import pickle
 from likelihoods import LogNormalLikelihood, LogNormalMCLikelihood, LogNormalQuadLikelihood, HeteroskedasticLikelihood
 from data_exploration import get_uv_data
 from gpflow.utilities import print_summary
 import tensorflow_probability as tfp
 from metrics import negatve_log_predictive_density, train_model
+
 
 def build_model(train_data):
     """
@@ -32,8 +34,8 @@ def build_model(train_data):
     # likelihood = LogNormalLikelihood(input_dim, latent_dim, observation_dim)
     likelihood = likelihood = HeteroskedasticLikelihood(
         distribution_class=tfp.distributions.Gamma,
-        param1_transform=tfp.bijectors.Exp(),
-        param2_transform=tfp.bijectors.Exp()
+        param1_transform=tfp.bijectors.Softplus(),
+        param2_transform=tfp.bijectors.Softplus()
     )
     # Create a list of base kernels for the Linear Coregionalization model
     kern_list = [gpf.kernels.SquaredExponential() + gpf.kernels.Linear() + gpf.kernels.Constant() for _ in range(ind_process_dim)]
@@ -94,13 +96,13 @@ def main():
     # Set seed for GPflow
     tf.random.set_seed(0)
 
-    train_data, val_data, test_data = get_uv_data()
+    (train_data, val_data, test_data), scaler = get_uv_data()
     X_test, Y_test = test_data
     X_train, Y_train = train_data
 
     model = build_model(train_data)
     # gpf.utilities.set_trainable(model.kernel.W, False)
-    train_model(model, train_data, validation_data=val_data, epochs=5000, patience=100)
+    train_model(model, train_data, validation_data=val_data, epochs=5000, patience=1000)
     # print_summary(model)
 
     Y_mean, Y_var = model.predict_y(X_test)
@@ -181,6 +183,12 @@ def main():
 
     nlogpred = negatve_log_predictive_density(model, X_test, Y_test)
     print(nlogpred)
+    save_dir = "saved_model_0"
+    with open('save_dir', 'wb') as file:
+        pickle.dump(gpf.utilities.parameter_dict(model), file)
+
+    # plot_results(model, X_test, Y_test)
+
     
 
 if __name__ == "__main__": 

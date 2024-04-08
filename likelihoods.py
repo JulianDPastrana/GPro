@@ -162,13 +162,14 @@ class HeteroskedasticLikelihood(MultiLatentTFPConditional):
 
         self.param1_transform = param1_transform
         self.param2_transform = param2_transform
+        self.distribution_class = distribution_class
         @check_shapes(
             "F: [batch..., 2]",
         )
         def conditional_distribution(F) -> tfp.distributions.Distribution:
             param1 = self.param1_transform(F[..., :1])
             param2 = self.param2_transform(F[..., 1:])
-            return distribution_class(param1, param2)
+            return self.distribution_class(param1, param2)
 
         super().__init__(
             latent_dim=2,
