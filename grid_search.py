@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import gpflow as gpf
 import pandas as pd
-from likelihoods import LogNormalLikelihood, LogNormalMCLikelihood, HeteroskedasticLikelihood
+from likelihoods import MOChainedLikelihoodMC
 from data_exploration import get_uv_data
 from sklearn.model_selection import TimeSeriesSplit
 from itertools import product
@@ -11,11 +11,11 @@ from metrics import *
 
 def chained_corr(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing):
     # Create a list of base kernels for the Linear Coregionalization model
-    kern_list = [gpf.kernels.SquaredExponential() + gpf.kernels.Linear() + gpf.kernels.Constant() for _ in range(ind_process_dim)]
+    kern_list = [gpf.kernels.SquaredExponential(lengthscales=np.ones(input_dim)) + gpf.kernels.Linear(variance=np.ones(input_dim)) + gpf.kernels.Constant() for _ in range(ind_process_dim)]
     
     # Initialize the mixing matrix for the coregionalization kernel
     kernel = gpf.kernels.LinearCoregionalization(
-        kern_list, W=np.eye(latent_dim, ind_process_dim)
+        kern_list, W=np.random.randn(latent_dim, ind_process_dim)
     )
     Zinit = np.random.rand(num_inducing, input_dim)
     Zs = [Zinit.copy() for _ in range(ind_process_dim)]
@@ -23,7 +23,10 @@ def chained_corr(input_dim, latent_dim, observation_dim, ind_process_dim, num_in
     iv = gpf.inducing_variables.SeparateIndependentInducingVariables(iv_list)
     q_mu = np.zeros((num_inducing, ind_process_dim))
     q_sqrt = np.repeat(np.eye(num_inducing)[None, ...], ind_process_dim, axis=0) * 1.0
-    likelihood = likelihood = HeteroskedasticLikelihood(
+    likelihood = likelihood = MOChainedLikelihoodMC(
+        input_dim=input_dim,
+        latent_dim=latent_dim,
+        observation_dim=observation_dim,
         distribution_class=tfp.distributions.Gamma,
         param1_transform=tfp.bijectors.Softplus(),
         param2_transform=tfp.bijectors.Softplus()
@@ -45,7 +48,7 @@ np.random.seed(0)
 # Set seed for GPflow
 tf.random.set_seed(0)
 
-train_data, val_data, test_data = get_uv_data()
+(train_data, _, test_data), scaler = get_uv_data()
 X_test, Y_test = test_data
 X_train, Y_train = train_data
 
@@ -56,12 +59,12 @@ observation_dim = Y_train.shape[1]
 # Determine dimensions for the latent variables and inducing points
 latent_dim = 2 * observation_dim
 # Define the grid of parameters to search
-num_inducing_values = [20, 50, 100, 150]
-ind_process_dim_values = [2, 4, 8, 16]
+num_inducing_values = [2 ** i for i in range(8)]
+ind_process_dim_values = [2 ** i for i in range(8)]
 n_splits = 5  # Number of splits for TimeSeriesSplit
 
 # Initialize TimeSeriesSplit
-tscv = TimeSeriesSplit(n_splits=n_splits)
+tscv = TimeSeriesSplit(n_splits=n_splits, max_train_size=1200, test_size=30)
 # print(np.sum(np.isnan(Y_train)))
 # Store results
 results = []
@@ -79,7 +82,8 @@ for num_inducing, ind_process_dim in product(num_inducing_values, ind_process_di
         Y_train_fold, Y_test_fold = Y_train[train_index], Y_train[test_index]
 
         model = chained_corr(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing)
-        train_model(model, (X_train_fold, Y_train_fold), validation_data=(X_test_fold, Y_test_fold), epochs=5000, verbose=False, patience=100)
+        train_model(model, (X_train_fold, Y_train_fold), validation_data=(X_test_fold, Y_test_fold),
+                    epochs=1000, verbose=False, patience=100)
 
         nlogpred = negatve_log_predictive_density(model, X_test_fold, Y_test_fold)
         mse = mean_squared_error(model, X_test_fold, Y_test_fold)
@@ -87,7 +91,7 @@ for num_inducing, ind_process_dim in product(num_inducing_values, ind_process_di
         fold_metrics['NLPD'].append(nlogpred.numpy())
         fold_metrics['MSE'].append(mse.numpy())
         fold_metrics['MAE'].append(mae.numpy())
-        print(f"NLPD: {nlogpred.numpy():.2e}, MSE: {mse.numpy():.2e}, MAE: {mae.numpy():.2e}")
+        print(f"\tNLPD: {nlogpred.numpy():.2e}, MSE: {mse.numpy():.2e}, MAE: {mae.numpy():.2e}")
 
     # Calculate mean and variance for each metric across folds
     summary = {
@@ -107,7 +111,7 @@ for num_inducing, ind_process_dim in product(num_inducing_values, ind_process_di
 df_results = pd.DataFrame(results)
 
 # Save results to Excel file
-filename = "gp_model_ts_grid_search_results.xlsx"
+filename = "mochainedgp_model_ts_grid_search_results.xlsx"
 df_results.to_excel(filename, index=False)
 
 print(f"Grid search with time-series cross-validation completed. Results saved to {filename}.")

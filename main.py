@@ -4,88 +4,44 @@ import matplotlib.pyplot as plt
 import gpflow as gpf
 import seaborn as sns
 import pickle
-from likelihoods import LogNormalLikelihood, LogNormalMCLikelihood, LogNormalQuadLikelihood, HeteroskedasticLikelihood
+from likelihoods import MOChainedLikelihoodMC, MOChainedLikelihoodQuad
 from data_exploration import get_uv_data
 from gpflow.utilities import print_summary
 import tensorflow_probability as tfp
 from metrics import negatve_log_predictive_density, train_model
 
+gpf.config.set_default_float(np.float64)
 
-def build_model(train_data):
-    """
-    Builds and returns a Gaussian Process (GP) model using the SVGP (Sparse Variational Gaussian Process) framework.
-
-    Parameters:
-    - train_data: tuple of (X, Y) where `X` is the training inputs and `Y` is the training outputs.
-
-    Returns:
-    - model: The constructed GP model configured with a specified kernel, likelihood, and inducing points.
-    """
-    # Unpack training data
-    X, Y = train_data
-    n_samples, input_dim = X.shape
-    observation_dim = Y.shape[1]
+def chained_corr(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing):
+    # Create a list of base kernels for the Linear Coregionalization model
+    kern_list = [gpf.kernels.SquaredExponential(lengthscales=np.ones(input_dim)) + gpf.kernels.Linear(variance=np.ones(input_dim)) + gpf.kernels.Constant() for _ in range(ind_process_dim)]
     
-    # Determine dimensions for the latenLogNormalLikelihoodt variables and inducing points
-    latent_dim = 2 * observation_dim
-    ind_process_dim = 8  # Number of independent processes in the coregionalization model
-
-    # Initialize the likelihood with appropriate dimensions
-    # likelihood = LogNormalLikelihood(input_dim, latent_dim, observation_dim)
-    likelihood = likelihood = HeteroskedasticLikelihood(
+    # Initialize the mixing matrix for the coregionalization kernel
+    kernel = gpf.kernels.LinearCoregionalization(
+        kern_list, W=np.random.randn(latent_dim, ind_process_dim) + np.eye(latent_dim, ind_process_dim)
+    )
+    Zinit = np.random.rand(num_inducing, input_dim)
+    Zs = [Zinit.copy() for _ in range(ind_process_dim)]
+    iv_list = [gpf.inducing_variables.InducingPoints(Z) for Z in Zs]
+    iv = gpf.inducing_variables.SeparateIndependentInducingVariables(iv_list)
+    q_mu = np.zeros((num_inducing, ind_process_dim))
+    q_sqrt = np.repeat(np.eye(num_inducing)[None, ...], ind_process_dim, axis=0) * 1.0
+    likelihood = likelihood = MOChainedLikelihoodMC(
+        input_dim=input_dim,
+        latent_dim=latent_dim,
+        observation_dim=observation_dim,
         distribution_class=tfp.distributions.Gamma,
         param1_transform=tfp.bijectors.Softplus(),
         param2_transform=tfp.bijectors.Softplus()
     )
-    # Create a list of base kernels for the Linear Coregionalization model
-    kern_list = [gpf.kernels.SquaredExponential() + gpf.kernels.Linear() + gpf.kernels.Constant() for _ in range(ind_process_dim)]
-    
-    # Initialize the mixing matrix for the coregionalization kernel
-    kernel = gpf.kernels.LinearCoregionalization(
-        kern_list, W=np.eye(latent_dim, ind_process_dim)
-    )
-    
-    # Logging for debugging and verification purposes
-    print("Observation dim:", likelihood.observation_dim)
-    print("Latent dim:", likelihood.latent_dim)
-
-    # Number of inducing points
-    M = 20
-    
-    Zinit = np.random.rand(M, input_dim)
-    # initialization of inducing input locations, one set of locations per output
-    Zs = [Zinit.copy() for _ in range(ind_process_dim)]
-    # initialize as list inducing inducing variables
-    iv_list = [gpf.inducing_variables.InducingPoints(Z) for Z in Zs]
-    # create multi-output inducing variables from iv_list
-    inducing_variable = gpf.inducing_variables.SeparateIndependentInducingVariables(iv_list)
-    # Configure the inducing variables for the model
-    # inducing_variable = gpf.inducing_variables.SharedIndependentInducingVariables(
-    #     gpf.inducing_variables.InducingPoints(Z)
-    # )
-
-    # Initialize the mean and variance of the variational posterior
-    # q_mu1 = -np.ones((M, ind_process_dim // 2))
-    # q_mu2 = -np.ones((M, ind_process_dim // 2))
-
-    # Initialize Fmu with zeros
-    q_mu = np.zeros((M, ind_process_dim))
-
-    # Populate Fmu with q_mu1 and q_mu2 at even and odd indices respectively
-    # q_mu[..., ::2] = q_mu1
-    # q_mu[..., 1::2] = q_mu2
-    q_sqrt = np.repeat(np.eye(M)[None, ...], ind_process_dim, axis=0) * 1.0
-
-    # Construct the SVGP model with the specified components
     model = gpf.models.SVGP(
         kernel=kernel,
         likelihood=likelihood,
-        inducing_variable=inducing_variable,
-        # num_latent_gps=ind_process_dim,  # Correctly set to match the latent dimensionality
+        inducing_variable=iv,
         q_mu=q_mu,
         q_sqrt=q_sqrt
     )
-    
+
     return model
 
 
@@ -100,9 +56,17 @@ def main():
     X_test, Y_test = test_data
     X_train, Y_train = train_data
 
-    model = build_model(train_data)
+
+    n_samples, input_dim = X_train.shape
+    observation_dim = Y_train.shape[1]
+
+    # Determine dimensions for the latent variables and inducing points
+    latent_dim = 2 * observation_dim
+
+
+    model = chained_corr(input_dim, latent_dim, observation_dim, ind_process_dim=128, num_inducing=128)
     # gpf.utilities.set_trainable(model.kernel.W, False)
-    train_model(model, train_data, validation_data=val_data, epochs=5000, patience=1000)
+    train_model(model, train_data, validation_data=val_data, epochs=5000, patience=100)
     # print_summary(model)
 
     Y_mean, Y_var = model.predict_y(X_test)
@@ -183,8 +147,8 @@ def main():
 
     nlogpred = negatve_log_predictive_density(model, X_test, Y_test)
     print(nlogpred)
-    save_dir = "saved_model_0"
-    with open('save_dir', 'wb') as file:
+    model_name = "GammaCH.me"
+    with open(model_name, 'wb') as file:
         pickle.dump(gpf.utilities.parameter_dict(model), file)
 
     # plot_results(model, X_test, Y_test)

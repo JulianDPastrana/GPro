@@ -176,3 +176,97 @@ class HeteroskedasticLikelihood(MultiLatentTFPConditional):
             conditional_distribution=conditional_distribution,
             # **kwargs,
         )
+
+
+class MOChainedLikelihoodQuad(QuadratureLikelihood):
+    def __init__(self, input_dim, latent_dim, observation_dim,
+        distribution_class,
+        param1_transform,
+        param2_transform,) -> None:
+        self.param1_transform = param1_transform
+        self.param2_transform = param2_transform
+        self.distribution_class = distribution_class
+        # DEFAULT_NUM_GAUSS_HERMITE_POINTS = 100
+        super().__init__(input_dim, latent_dim, observation_dim)
+
+    
+    def _log_prob(self, X, F, Y) -> tf.Tensor:
+        """
+        Computes the log probability density log p(Y|F) for a log-normal distribution.
+        """
+        Fd1 = F[..., ::2]  # Extract even indices - mean
+        Fd2 = F[..., 1::2]  # Extract odd indices - std deviation
+        alpha = self.param1_transform(Fd1)
+        beta = self.param2_transform(Fd2)
+        dist = self.distribution_class(alpha, beta)
+        return tf.reduce_sum(dist.log_prob(Y), axis=-1)
+
+    def _conditional_mean(self, X, F) -> tf.Tensor:
+        """
+        Computes the conditional mean E[Y|F] for a log-normal distribution.
+        """
+        Fd1 = F[..., ::2]  # Extract even indices - mean
+        Fd2 = F[..., 1::2]  # Extract odd indices - std deviation
+        alpha = self.param1_transform(Fd1)
+        beta = self.param2_transform(Fd2)
+        dist = self.distribution_class(alpha, beta)
+        return dist.mean()
+
+
+    def _conditional_variance(self, X, F) -> tf.Tensor:
+        """
+        Computes the conditional variance Var[Y|F] for a log-normal distribution.
+        """
+        Fd1 = F[..., ::2]  # Extract even indices - mean
+        Fd2 = F[..., 1::2]  # Extract odd indices - std deviation
+        alpha = self.param1_transform(Fd1)
+        beta = self.param2_transform(Fd2)
+        dist = self.distribution_class(alpha, beta)
+        return dist.variance()
+
+
+class MOChainedLikelihoodMC(MonteCarloLikelihood):
+    def __init__(self, input_dim, latent_dim, observation_dim,
+        distribution_class,
+        param1_transform,
+        param2_transform,) -> None:
+        self.param1_transform = param1_transform
+        self.param2_transform = param2_transform
+        self.distribution_class = distribution_class
+        self.num_monte_carlo_points = 1500
+        super().__init__(input_dim, latent_dim, observation_dim)
+
+
+    def _log_prob(self, X, F, Y) -> tf.Tensor:
+        """
+        Computes the log probability density log p(Y|F) for a log-normal distribution.
+        """
+        Fd1 = F[..., ::2]  # Extract even indices - mean
+        Fd2 = F[..., 1::2]  # Extract odd indices - std deviation
+        alpha = self.param1_transform(Fd1)
+        beta = self.param2_transform(Fd2)
+        dist = self.distribution_class(alpha, beta)
+        return tf.reduce_sum(dist.log_prob(Y), axis=-1)
+
+    def _conditional_mean(self, X, F) -> tf.Tensor:
+        """
+        Computes the conditional mean E[Y|F] for a log-normal distribution.
+        """
+        Fd1 = F[..., ::2]  # Extract even indices - mean
+        Fd2 = F[..., 1::2]  # Extract odd indices - std deviation
+        alpha = self.param1_transform(Fd1)
+        beta = self.param2_transform(Fd2)
+        dist = self.distribution_class(alpha, beta)
+        return dist.mean()
+
+
+    def _conditional_variance(self, X, F) -> tf.Tensor:
+        """
+        Computes the conditional variance Var[Y|F] for a log-normal distribution.
+        """
+        Fd1 = F[..., ::2]  # Extract even indices - mean
+        Fd2 = F[..., 1::2]  # Extract odd indices - std deviation
+        alpha = self.param1_transform(Fd1)
+        beta = self.param2_transform(Fd2)
+        dist = self.distribution_class(alpha, beta)
+        return dist.variance()

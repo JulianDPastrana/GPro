@@ -88,7 +88,7 @@ def thermo_dataset():
     return df[["Total [Gwh]"]]
 
 def get_uv_data():
-    df = thermo_dataset()
+    df = streamflow_dataset()
     df_norm = df.copy()
     scaler = MinMaxScaler()
     df_norm[df.columns] = scaler.fit_transform(df)
@@ -98,7 +98,8 @@ def get_uv_data():
     window = WindowGenerator(1, 1, 1, df_norm.columns)
 
     X, Y = window.make_dataset(df_norm)
-
+    # X = np.float64(X)
+    # Y = np.float64(Y)
     # Find rows with NaNs in X and Y to ensure continuity
     nan_rows_X = np.any(np.isnan(X), axis=1)
     nan_rows_Y = np.any(np.isnan(Y), axis=1)
@@ -108,8 +109,8 @@ def get_uv_data():
     Y_clean = np.maximum(Y_clean, 1e-3)
     # Split into train and test sets
     N = Y_clean.shape[0]
-    train_data = (X_clean[0:int(N*0.9)], Y_clean[0:int(N*0.9)])
-    val_data = (X_clean[int(N*0.9):int(N*0.95)], Y_clean[int(N*0.9):int(N*0.95)])
+    train_data = (X_clean[0:int(N*0.92)], Y_clean[0:int(N*0.92)])
+    val_data = (X_clean[int(N*0.92):int(N*0.95)], Y_clean[int(N*0.92):int(N*0.95)])
     test_data = (X_clean[int(N*0.95):], Y_clean[int(N*0.95):])
     return (train_data, val_data, test_data), scaler
 

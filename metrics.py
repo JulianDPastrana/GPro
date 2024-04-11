@@ -8,7 +8,10 @@ from gpflow.quadrature import ndiag_mc, ndiagquad, mvnquad
 def negatve_log_predictive_density(model, X_test, Y_test, n_samples=500):
         F_samples = model.predict_f_samples(X_test, n_samples)
         # monte-carlazo
-        log_pred = model.likelihood.log_prob(X=X_test, F=F_samples, Y=Y_test)
+        log_pred = 0
+        for sample in range(n_samples):
+            F_sample = F_samples[sample]
+            log_pred += model.likelihood.log_prob(X=X_test, F=F_sample, Y=Y_test)
         nlogpred = -tf.reduce_sum(log_pred) / n_samples
         
         return nlogpred
@@ -47,10 +50,10 @@ def train_model(model, data, validation_data, epochs=100, log_freq=20, patience=
     # variational_vars = [(model.q_mu, model.q_sqrt)]
     # natgrad_opt = gpf.optimizers.NaturalGradient(gamma=0.005)
     adam_vars = model.trainable_variables
-    adam_opt = tf.optimizers.Adam(0.005)
-    grads, variables = zip(*adam_opt.compute_gradients(loss_fn, adam_vars))
-    grads, _ = tf.clip_by_global_norm(grads, 1e3)
-    adam_opt.apply_gradients(zip(grads, variables))
+    adam_opt = tf.optimizers.Adam(0.01)
+    # grads, variables = zip(*adam_opt.compute_gradients(loss_fn, adam_vars))
+    # grads, _ = tf.clip_by_global_norm(grads, 1e3)
+    # adam_opt.apply_gradients(zip(grads, variables))
 
     # Setup checkpointing
     checkpoint = tf.train.Checkpoint(optimizer=adam_opt, model=model)
