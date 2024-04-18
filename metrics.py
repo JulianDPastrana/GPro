@@ -18,10 +18,7 @@ def negatve_log_predictive_density(model, X_test, Y_test, n_samples=500):
 
 def mean_squared_error(model, X_test, Y_test):
     Y_mean, _ = model.predict_y(X_test)
-    print("Anoter NaNs", np.sum(~np.isfinite(Y_mean.numpy())))
-    print("Anoter NaNs but test", np.sum(~np.isfinite(Y_test)))
     mse = tf.reduce_mean(tf.square(Y_test - Y_mean))
-    print("Anoter NaNs but mse", np.sum(~np.isfinite(mse.numpy())))
     return mse
 
 def mean_absolute_error(model, X_test, Y_test):
