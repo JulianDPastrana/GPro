@@ -12,6 +12,8 @@ import gpflow as gpf
 from check_shapes import check_shapes
 from gpflow.likelihoods import MultiLatentTFPConditional
 
+import matplotlib.pyplot as plt
+
 class LogNormalQuadLikelihood(QuadratureLikelihood):
     def __init__(self, input_dim, latent_dim, observation_dim) -> None:
         super().__init__(
@@ -245,7 +247,7 @@ class MOChainedLikelihoodMC(MonteCarloLikelihood):
         Fd2 = F[..., 1::2]  # Extract odd indices - std deviation
         alpha = self.param1_transform(Fd1)
         beta = self.param2_transform(Fd2)
-        dist = self.distribution_class(alpha, beta)
+        dist = self.distribution_class(alpha, beta, force_probs_to_zero_outside_support=True)
         return tf.reduce_sum(dist.log_prob(Y), axis=-1)
 
     def _conditional_mean(self, X, F) -> tf.Tensor:
@@ -253,11 +255,12 @@ class MOChainedLikelihoodMC(MonteCarloLikelihood):
         Computes the conditional mean E[Y|F] for a log-normal distribution.
         """
         Fd1 = F[..., ::2]  # Extract even indices - mean
-        Fd2 = F[..., 1::2]  # Extract odd indices - std deviation
+        Fd2 = F[..., 1::2]  # Extract odd indices - variance
         alpha = self.param1_transform(Fd1)
         beta = self.param2_transform(Fd2)
-        dist = self.distribution_class(alpha, beta)
+        dist = self.distribution_class(alpha, beta, force_probs_to_zero_outside_support=True)
         return dist.mean()
+        # return alpha / (alpha + beta)
 
 
     def _conditional_variance(self, X, F) -> tf.Tensor:
@@ -265,8 +268,8 @@ class MOChainedLikelihoodMC(MonteCarloLikelihood):
         Computes the conditional variance Var[Y|F] for a log-normal distribution.
         """
         Fd1 = F[..., ::2]  # Extract even indices - mean
-        Fd2 = F[..., 1::2]  # Extract odd indices - std deviation
+        Fd2 = F[..., 1::2]  # Extract odd indices - variance
         alpha = self.param1_transform(Fd1)
         beta = self.param2_transform(Fd2)
-        dist = self.distribution_class(alpha, beta)
+        dist = self.distribution_class(alpha, beta, force_probs_to_zero_outside_support=True)
         return dist.variance()

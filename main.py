@@ -30,7 +30,37 @@ def chained_corr(input_dim, latent_dim, observation_dim, ind_process_dim, num_in
         input_dim=input_dim,
         latent_dim=latent_dim,
         observation_dim=observation_dim,
-        distribution_class=tfp.distributions.Gamma,
+        distribution_class=tfp.distributions.Beta,
+        param1_transform=tfp.bijectors.Softplus(),
+        param2_transform=tfp.bijectors.Softplus()
+    )
+    model = gpf.models.SVGP(
+        kernel=kernel,
+        likelihood=likelihood,
+        inducing_variable=iv,
+        q_mu=q_mu,
+        q_sqrt=q_sqrt
+    )
+
+    return model
+
+
+def chained_indp(input_dim, latent_dim, observation_dim, num_inducing):
+    # Create a list of base kernels for the Linear Coregionalization model
+    kern_list = [gpf.kernels.SquaredExponential(lengthscales=np.ones(input_dim)) + gpf.kernels.Linear(variance=np.ones(input_dim)) + gpf.kernels.Constant() for _ in range(latent_dim)]
+    
+    kernel = kernel = gpf.kernels.SeparateIndependent(kern_list)
+    Zinit = np.random.rand(num_inducing, input_dim)
+    Zs = [Zinit.copy() for _ in range(latent_dim)]
+    iv_list = [gpf.inducing_variables.InducingPoints(Z) for Z in Zs]
+    iv = gpf.inducing_variables.SeparateIndependentInducingVariables(iv_list)
+    q_mu = np.zeros((num_inducing, latent_dim))
+    q_sqrt = np.repeat(np.eye(num_inducing)[None, ...], latent_dim, axis=0) * 1.0
+    likelihood = likelihood = MOChainedLikelihoodMC(
+        input_dim=input_dim,
+        latent_dim=latent_dim,
+        observation_dim=observation_dim,
+        distribution_class=tfp.distributions.Beta,
         param1_transform=tfp.bijectors.Softplus(),
         param2_transform=tfp.bijectors.Softplus()
     )
@@ -64,7 +94,7 @@ def main():
     latent_dim = 2 * observation_dim
 
 
-    model = chained_corr(input_dim, latent_dim, observation_dim, ind_process_dim=128, num_inducing=128)
+    model = chained_corr(input_dim, latent_dim, observation_dim, num_inducing=32, ind_process_dim=32)
     # gpf.utilities.set_trainable(model.kernel.W, False)
     train_model(model, train_data, validation_data=val_data, epochs=5000, patience=100)
     # print_summary(model)
@@ -147,7 +177,7 @@ def main():
 
     nlogpred = negatve_log_predictive_density(model, X_test, Y_test)
     print(nlogpred)
-    model_name = "GammaCH.me"
+    model_name = "Beta_model"
     with open(model_name, 'wb') as file:
         pickle.dump(gpf.utilities.parameter_dict(model), file)
 

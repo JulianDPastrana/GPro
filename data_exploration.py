@@ -62,7 +62,7 @@ class WindowGenerator:
 
 def streamflow_dataset():
     df = pd.read_excel(
-        io="./useful_volume.xlsx",
+        io="./PorcVoluUtilDiar.xlsx",
         header=0,
         index_col=0,
         parse_dates=True,
@@ -91,27 +91,40 @@ def get_uv_data():
     df = streamflow_dataset()
     df_norm = df.copy()
     scaler = MinMaxScaler()
-    df_norm[df.columns] = scaler.fit_transform(df)
+    # df_norm[df.columns] = scaler.fit_transform(df)
+    df_norm = df.copy()
+    # df_norm.fillna(0, inplace=True)
     print(df.describe().T)
     print(df.info())
 
-    window = WindowGenerator(1, 1, 1, df_norm.columns)
+    window = WindowGenerator(input_width=1,
+                             label_width=1,
+                             shift=1,
+                             label_columns=df_norm.columns
+                             )
 
     X, Y = window.make_dataset(df_norm)
     # X = np.float64(X)
-    # Y = np.float64(Y)
+    # Y = np.float64(Y)r
     # Find rows with NaNs in X and Y to ensure continuity
     nan_rows_X = np.any(np.isnan(X), axis=1)
     nan_rows_Y = np.any(np.isnan(Y), axis=1)
     nan_rows = nan_rows_X | nan_rows_Y   
     # Filter out the rows with NaNs
     X_clean, Y_clean = X[~nan_rows,:], Y[~nan_rows,:]
-    Y_clean = np.maximum(Y_clean, 1e-3)
+    eps = 1e-6
+    Y_clean = np.maximum(Y_clean, eps)
+    Y_clean = np.minimum(Y_clean, 1-eps)
+    print(f"Min value: {Y_clean.min()}, Max value: {Y_clean.max()}")
     # Split into train and test sets
     N = Y_clean.shape[0]
-    train_data = (X_clean[0:int(N*0.92)], Y_clean[0:int(N*0.92)])
-    val_data = (X_clean[int(N*0.92):int(N*0.95)], Y_clean[int(N*0.92):int(N*0.95)])
-    test_data = (X_clean[int(N*0.95):], Y_clean[int(N*0.95):])
+    tst = N - 446
+    print(f"N: {N}")
+    tr = int(tst * 0.7)
+    val = int(tst * 0.3) + tr
+    train_data = (X_clean[0:tr], Y_clean[0:tr])
+    val_data = (X_clean[tr:val], Y_clean[tr:val])
+    test_data = (X_clean[val:], Y_clean[val:])
     return (train_data, val_data, test_data), scaler
 
 def main():

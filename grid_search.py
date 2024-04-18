@@ -59,12 +59,12 @@ observation_dim = Y_train.shape[1]
 # Determine dimensions for the latent variables and inducing points
 latent_dim = 2 * observation_dim
 # Define the grid of parameters to search
-num_inducing_values = [2 ** i for i in range(8)]
-ind_process_dim_values = [2 ** i for i in range(8)]
+num_inducing_values = [2 ** i for i in range(7)]
+ind_process_dim_values = [2 ** i for i in range(7)]
 n_splits = 5  # Number of splits for TimeSeriesSplit
 
 # Initialize TimeSeriesSplit
-tscv = TimeSeriesSplit(n_splits=n_splits, max_train_size=1200, test_size=30)
+tscv = TimeSeriesSplit(n_splits=n_splits, max_train_size=500, test_size=500)
 # print(np.sum(np.isnan(Y_train)))
 # Store results
 results = []

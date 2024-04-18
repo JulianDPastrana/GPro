@@ -8,7 +8,7 @@ from data_exploration import get_uv_data
 from gpflow.utilities import print_summary
 import tensorflow_probability as tfp
 import matplotlib
-from main import build_model
+from main import chained_corr
 import pickle
 from matplotlib import cm
 from scipy.stats import gamma
@@ -16,7 +16,7 @@ from metrics import negatve_log_predictive_density, train_model
 from typing import Any, Tuple
 
 
-def plot_results(model: Any, X: np.ndarray, Y: np.ndarray, scaler: Any) -> None:
+def plot_results(model: Any, X: np.ndarray, Y: np.ndarray) -> None:
     """
     Plot the predictive density of a model's forecasts along with the observed data.
 
@@ -35,73 +35,77 @@ def plot_results(model: Any, X: np.ndarray, Y: np.ndarray, scaler: Any) -> None:
     # Initialize the time index for X-axis
     time_index = np.arange(X.shape[0])[:, None]
     # Define constants for the number of samples and Y-axis pixels
-    num_samples = 200
-    num_y_pixels = 100
-    
+    num_samples = 10
+    num_y_pixels = 20
+    observation_dim = Y.shape[1]
     # Calculate X and Y limits for the plot
     xlim_min, xlim_max = time_index[:, 0].min(), time_index[:, 0].max()
-    ylim_min, ylim_max = Y[:, 0].min(), Y[:, 0].max()
+    ylim_min, ylim_max = 0, 1
     
     # Sample from the model's predictive distribution
     Fsamples = model.predict_f_samples(X, num_samples)
     
     # Transform samples using the likelihood parameters
-    alpha = model.likelihood.param1_transform(Fsamples[..., 0])
-    beta = model.likelihood.param1_transform(Fsamples[..., 1])
+    alpha = model.likelihood.param1_transform(Fsamples[..., ::2])
+    beta = model.likelihood.param1_transform(Fsamples[..., 1::2])
     
     # Prepare line space for the Y-axis
-    line_space = np.linspace(np.floor(ylim_min), np.ceil(ylim_max), num_y_pixels)
-    predictive_density = np.zeros((X.shape[0], num_y_pixels))
+    line_space = np.linspace(ylim_min, ylim_max, num_y_pixels)
+    predictive_density = np.zeros((X.shape[0], num_y_pixels, observation_dim))
     
     # Compute the predictive density
     for j in range(X.shape[0]):
         for i in range(num_samples):
-            dist = model.likelihood.distribution_class(alpha[i, j], beta[i, j])
-            predictive_density[j, :] += dist.prob(line_space).numpy()
+            for d in range(observation_dim):
+                dist = model.likelihood.distribution_class(alpha[i, j, d], beta[i, j, d], force_probs_to_zero_outside_support=True)
+                predictive_density[j, :, d] += dist.prob(line_space).numpy()
     predictive_density /= num_samples
-    
-    # Inverse transform the line space and predictive density using the provided scaler
-    line_space_transformed = scaler.inverse_transform(line_space[:, None]).flatten()
-    predictive_density_transformed = scaler.inverse_transform(predictive_density)
-    
-    # Inverse transform the mean prediction and observations
-    Ymean, _ = model.predict_y(X)
-    Ymean_transformed = scaler.inverse_transform(Ymean)
-    Y_transformed = scaler.inverse_transform(Y)
+
     
     # Create a meshgrid for the contour plot
-    x_mesh, y_mesh = np.meshgrid(time_index, line_space_transformed)
-    
-    # Plot the predictive density and observations
-    fig, ax = plt.subplots(figsize=(15, 8))
-    cs = ax.contourf(x_mesh, y_mesh, predictive_density_transformed.T)
-    fig.colorbar(cs, ax=ax)
-    ax.scatter(time_index, Y_transformed, color="k", s=10, label="Observaciones")
-    ax.plot(time_index, Ymean_transformed, color="white", lw=1, alpha=0.8, label="Media")
-    ax.set_xlabel("Indice de tiempo del pronóstico [Días]")
-    ax.set_ylabel("Generación térmica [Gwh]")
-    ax.set_title("Densidad de probabilidad del pronóstico")
-    plt.legend()
+    x_mesh, y_mesh = np.meshgrid(time_index, line_space)
+    n_cols = int(np.ceil(np.sqrt(observation_dim)))
+    n_rows = int(np.ceil(observation_dim / n_cols))
+
+    fig, ax = plt.subplots(n_rows, n_cols, figsize=(5*n_cols, 5*n_rows))
+    ax = np.array([ax]) if not isinstance(ax, np.ndarray) else ax
+    # Flatten the ax array for easy indexing
+    ax_flat = ax.flatten()
+    for d in range(observation_dim):
+        cs = ax_flat[d].contourf(x_mesh, y_mesh, np.log10(predictive_density[:, :, d].T))
+        # plt.colorbar()
+        # fig.colorbar(cs, ax=ax)
+        ax_flat[d].scatter(time_index, Y[:, d], color="k", s=10, label="Observaciones")
+        # Hide any unused subplots
+    for d in range(observation_dim, n_rows*n_cols):
+        ax_flat[d].axis('off')
 
     plt.tight_layout()
     plt.savefig("predictive_density.png")
     plt.close()
 
-
 def main():
-    save_dir = "saved_model_0"
-    model = tf.saved_model.load(save_dir)
+    save_dir = "Beta_model"
+    # model = tf.saved_model.load(save_dir)
     (train_data, val_data, test_data), scaler = get_uv_data()
     X_test, Y_test = test_data
     X_train, Y_train = train_data
     # Cargar el objeto desde un archivo
-    with open('save_dir', 'rb') as file:
+    with open(save_dir, 'rb') as file:
         params = pickle.load(file)
-    model = build_model(train_data)
+
+    n_samples, input_dim = X_train.shape
+    observation_dim = Y_train.shape[1]
+
+    # Determine dimensions for the latent variables and inducing points
+    latent_dim = 2 * observation_dim
+
+
+    model = chained_corr(input_dim, latent_dim, observation_dim, num_inducing=32, ind_process_dim=32)
     gpf.utilities.multiple_assign(model, params)
 
 
-    plot_results(model, X_test, Y_test, scaler)
+    plot_results(model, X_test, Y_test)
 
 if __name__ == "__main__": 
     main()
