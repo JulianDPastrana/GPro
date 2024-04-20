@@ -94,7 +94,7 @@ def main():
     latent_dim = 2 * observation_dim
 
 
-    model = chained_corr(input_dim, latent_dim, observation_dim, num_inducing=32, ind_process_dim=32)
+    model = chained_corr(input_dim, latent_dim, observation_dim, num_inducing=128, ind_process_dim=128)
     # gpf.utilities.set_trainable(model.kernel.W, False)
     train_model(model, train_data, validation_data=val_data, epochs=5000, patience=100)
     # print_summary(model)
