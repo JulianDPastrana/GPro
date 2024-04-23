@@ -97,7 +97,7 @@ def get_uv_data():
     print(df.describe().T)
     print(df.info())
 
-    window = WindowGenerator(input_width=1,
+    window = WindowGenerator(input_width=7,
                              label_width=1,
                              shift=1,
                              label_columns=df_norm.columns

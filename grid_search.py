@@ -48,7 +48,7 @@ np.random.seed(0)
 # Set seed for GPflow
 tf.random.set_seed(0)
 
-(train_data, _, test_data), scaler = get_uv_data()
+(train_data, val_data, test_data), scaler = get_uv_data()
 X_test, Y_test = test_data
 X_train, Y_train = train_data
 
@@ -61,10 +61,10 @@ latent_dim = 2 * observation_dim
 # Define the grid of parameters to search
 num_inducing_values = [2 ** i for i in range(7)]
 ind_process_dim_values = [2 ** i for i in range(7)]
-n_splits = 5  # Number of splits for TimeSeriesSplit
+# n_splits = 5  # Number of splits for TimeSeriesSplit
 
-# Initialize TimeSeriesSplit
-tscv = TimeSeriesSplit(n_splits=n_splits, max_train_size=500, test_size=500)
+# # Initialize TimeSeriesSplit
+# tscv = TimeSeriesSplit(n_splits=n_splits, max_train_size=500, test_size=500)
 # print(np.sum(np.isnan(Y_train)))
 # Store results
 results = []
@@ -76,22 +76,22 @@ for num_inducing, ind_process_dim in product(num_inducing_values, ind_process_di
     # Store metrics for all folds
     fold_metrics = {'NLPD': [], 'MSE': [], 'MAE': []}
 
-    for train_index, test_index in tscv.split(X_train):
-        print(f"\t Train shape={train_index.shape}, Test shape={test_index.shape}")
-        X_train_fold, X_test_fold = X_train[train_index], X_train[test_index]
-        Y_train_fold, Y_test_fold = Y_train[train_index], Y_train[test_index]
+    # for train_index, test_index in tscv.split(X_train):
+    print(f"\t Train shape={X_train.shape}, Test shape={X_test.shape}")
+    # X_train_fold, X_test_fold = X_train[train_index], X_train[test_index]
+    # Y_train_fold, Y_test_fold = Y_train[train_index], Y_train[test_index]
 
-        model = chained_corr(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing)
-        train_model(model, (X_train_fold, Y_train_fold), validation_data=(X_test_fold, Y_test_fold),
-                    epochs=1000, verbose=False, patience=100)
+    model = chained_corr(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing)
+    train_model(model, train_data, validation_data=val_data,
+                epochs=1000, verbose=False, patience=100)
 
-        nlogpred = negatve_log_predictive_density(model, X_test_fold, Y_test_fold)
-        mse = mean_squared_error(model, X_test_fold, Y_test_fold)
-        mae = mean_absolute_error(model, X_test_fold, Y_test_fold)
-        fold_metrics['NLPD'].append(nlogpred.numpy())
-        fold_metrics['MSE'].append(mse.numpy())
-        fold_metrics['MAE'].append(mae.numpy())
-        print(f"\tNLPD: {nlogpred.numpy():.2e}, MSE: {mse.numpy():.2e}, MAE: {mae.numpy():.2e}")
+    nlogpred = negatve_log_predictive_density(model, X_test, Y_test)
+    mse = mean_squared_error(model, X_test, Y_test)
+    mae = mean_absolute_error(model, X_test, Y_test)
+    fold_metrics['NLPD'].append(nlogpred.numpy())
+    fold_metrics['MSE'].append(mse.numpy())
+    fold_metrics['MAE'].append(mae.numpy())
+    print(f"\tNLPD: {nlogpred.numpy():.2e}, MSE: {mse.numpy():.2e}, MAE: {mae.numpy():.2e}")
 
     # Calculate mean and variance for each metric across folds
     summary = {
