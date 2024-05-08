@@ -16,6 +16,11 @@ def negatve_log_predictive_density(model, X_test, Y_test, n_samples=500):
         
         return nlogpred
 
+def nlpd(model, X_test, Y_test):
+    Fmu, Fvar = model.predict_f(X_test)
+    lpd = model.likelihood.predict_log_density(X=X_test, Fmu=Fmu, Fvar=Fvar, Y=Y_test)
+    return -tf.reduce_sum(lpd)
+
 def mean_squared_error(model, X_test, Y_test):
     Y_mean, _ = model.predict_y(X_test)
     mse = tf.reduce_mean(tf.square(Y_test - Y_mean))

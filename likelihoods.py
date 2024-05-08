@@ -241,7 +241,7 @@ class MOChainedLikelihoodMC(MonteCarloLikelihood):
 
     def _log_prob(self, X, F, Y) -> tf.Tensor:
         """
-        Computes the log probability density log p(Y|F) for a log-normal distribution.
+        Computes the log probability density log p(Y|F).
         """
         Fd1 = F[..., ::2]  # Extract even indices - mean
         Fd2 = F[..., 1::2]  # Extract odd indices - std deviation

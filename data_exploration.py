@@ -1,6 +1,9 @@
+#!/home/usuario/Documents/GPro/mygpvenv/bin/python3
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import matplotlib.pyplot as plt
+import tikzplotlib
 from sklearn.preprocessing import MinMaxScaler
 
 class WindowGenerator:
@@ -89,6 +92,13 @@ def thermo_dataset():
 
 def get_uv_data():
     df = streamflow_dataset()
+    df.columns = [chr(65 + i) for i in range(len(df.columns))]
+    eps = 1e-6
+    df = df.clip(lower=eps, upper=1 - eps)
+    print(df.min(), df.max())
+    sns.boxplot(df, showmeans=True, color='steelblue')
+    tikzplotlib.save("./figures/boxplot.tex")
+    plt.show()
     df_norm = df.copy()
     scaler = MinMaxScaler()
     # df_norm[df.columns] = scaler.fit_transform(df)
@@ -97,7 +107,7 @@ def get_uv_data():
     print(df.describe().T)
     print(df.info())
 
-    window = WindowGenerator(input_width=7,
+    window = WindowGenerator(input_width=1,
                              label_width=1,
                              shift=1,
                              label_columns=df_norm.columns
@@ -112,9 +122,8 @@ def get_uv_data():
     nan_rows = nan_rows_X | nan_rows_Y   
     # Filter out the rows with NaNs
     X_clean, Y_clean = X[~nan_rows,:], Y[~nan_rows,:]
-    eps = 1e-6
-    Y_clean = np.maximum(Y_clean, eps)
-    Y_clean = np.minimum(Y_clean, 1-eps)
+    # Y_clean = np.maximum(Y_clean, eps)
+    # Y_clean = np.minimum(Y_clean, 1-eps)
     print(f"Min value: {Y_clean.min()}, Max value: {Y_clean.max()}")
     # Split into train and test sets
     N = Y_clean.shape[0]
@@ -133,11 +142,7 @@ def main():
 
     X_val, Y_val = val_data
     X_test, Y_test = test_data
-    print(np.sum(~np.isfinite(Y_train)))
-    print(X_train.shape, Y_train.shape, X_val.shape, Y_val.shape, X_test.shape, Y_test.shape)
-    # X_test, Y_test = S_test[0]
-    plt.plot(Y_test[:, 0])
-    plt.show()
+
 
 if __name__ == "__main__":
     main()
