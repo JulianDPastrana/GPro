@@ -1,22 +1,36 @@
 #!/home/usuario/Documents/GPro/mygpvenv/bin/python3
+
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-import tikzplotlib
 from sklearn.preprocessing import MinMaxScaler
 
 class WindowGenerator:
-    def __init__(
-        self, input_width: int, label_width: int, shift: int, label_columns: list = None
-    ) -> None:
-        self.data = None
-        self.label_columns_indices = None
+    """
+    A class for generating input and label windows for time series data.
+
+    Attributes:
+        input_width (int): The width of the input window.
+        label_width (int): The width of the label window.
+        shift (int): The shift between the input and label windows.
+        label_columns (list): List of label column names.
+    """
+
+    def __init__(self, input_width: int, label_width: int, shift: int, label_columns: list = None) -> None:
+        """
+        Initializes the WindowGenerator with the specified parameters.
+
+        Args:
+            input_width (int): The width of the input window.
+            label_width (int): The width of the label window.
+            shift (int): The shift between the input and label windows.
+            label_columns (list, optional): List of label column names. Defaults to None.
+        """
         self.input_width = input_width
         self.label_width = label_width
         self.shift = shift
         self.total_window_size = input_width + shift
-
         self.label_columns = label_columns
 
         self.input_slice = slice(0, input_width)
@@ -27,121 +41,108 @@ class WindowGenerator:
         self.label_indices = np.arange(self.total_window_size)[self.labels_slice]
 
     def split_window(self, index: int = 0) -> tuple:
+        """
+        Splits the window into input and label windows.
+
+        Args:
+            index (int): The starting index for the split. Defaults to 0.
+
+        Returns:
+            tuple: Tuple containing input and label windows.
+        """
         features = self.data
         inputs = features[index + self.input_indices]
         labels = features[index + self.label_indices]
 
         if self.label_columns is not None:
-            labels = np.stack(
-                [
-                    labels[:, self.label_columns_indices[name]]
-                    for name in self.label_columns
-                ],
-                axis=-1,
-            )
+            labels = np.stack([labels[:, self.label_columns_indices[name]] for name in self.label_columns], axis=-1)
 
         return inputs, labels
 
     def make_dataset(self, dataframe: pd.DataFrame) -> tuple:
-        self.label_columns_indices = {
-            name: j for j, name in enumerate(dataframe.columns)
-        }
+        """
+        Creates the dataset from the input dataframe.
+
+        Args:
+            dataframe (pd.DataFrame): Input data.
+
+        Returns:
+            tuple: Tuple containing input and label datasets.
+        """
+        self.label_columns_indices = {name: j for j, name in enumerate(dataframe.columns)}
         self.data = dataframe.values
         n_samples, n_feats = dataframe.shape
         real_samples = n_samples - self.total_window_size + 1
 
-        x_data = np.empty(shape=(real_samples, n_feats * self.input_width))
-        y_data = np.empty(
-            shape=(real_samples, self.label_columns.__len__() * self.label_width)
-        )
+        x_data = np.empty((real_samples, n_feats * self.input_width))
+        y_data = np.empty((real_samples, len(self.label_columns) * self.label_width))
 
         for index in range(real_samples):
-            inputs, labels = self.split_window(index=index)
+            inputs, labels = self.split_window(index)
             x_data[index] = inputs.ravel()
             y_data[index] = labels.ravel()
 
         return x_data, y_data
-    
 
-def streamflow_dataset():
+
+def daily_vol_dataset() -> pd.DataFrame:
+    """
+    Loads and preprocesses the streamflow dataset.
+
+    Returns:
+        pd.DataFrame: The preprocessed streamflow dataset.
+    """
     df = pd.read_excel(
         io="./PorcVoluUtilDiar.xlsx",
         header=0,
         index_col=0,
         parse_dates=True,
     )
-    df = df.clip(lower=0)
-    # print(df.describe().T)
-    return df[["AGREGADO BOGOTA", "CALIMA1", "MIRAFLORES", "PENOL",
-               "PLAYAS", "PUNCHINA", "BETANIA", "CHUZA",
-               "ESMERALDA", "GUAVIO", "PRADO", "RIOGRANDE2",
-               "SAN LORENZO", "TRONERAS", "URRA1", "SALVAJINA"
-               ]
-               ]
-
-def thermo_dataset():
-    df = pd.read_excel(
-        io="./termo_gen.xlsx",
-        header=0,
-        index_col=0,
-        parse_dates=True,
-    )
-    df = df.clip(lower=0)
-    # print(df.describe().T)
-    return df[["Total [Gwh]"]]
-
-def get_uv_data():
-    df = streamflow_dataset()
-    df.columns = [chr(65 + i) for i in range(len(df.columns))]
     eps = 1e-6
     df = df.clip(lower=eps, upper=1 - eps)
-    print(df.min(), df.max())
-    sns.boxplot(df, showmeans=True, color='steelblue')
-    tikzplotlib.save("./figures/boxplot.tex")
-    plt.show()
-    df_norm = df.copy()
-    scaler = MinMaxScaler()
-    # df_norm[df.columns] = scaler.fit_transform(df)
-    df_norm = df.copy()
-    # df_norm.fillna(0, inplace=True)
-    print(df.describe().T)
-    print(df.info())
+    return df[
+        ["AGREGADO BOGOTA", "CALIMA1", "MIRAFLORES", "PENOL", "PLAYAS", "PUNCHINA", 
+         "BETANIA", "CHUZA", "ESMERALDA", "GUAVIO", "PRADO", "RIOGRANDE2", "SAN LORENZO", 
+         "TRONERAS", "URRA1", "SALVAJINA"]
+    ]
 
-    window = WindowGenerator(input_width=1,
-                             label_width=1,
-                             shift=1,
-                             label_columns=df_norm.columns
-                             )
 
-    X, Y = window.make_dataset(df_norm)
-    # X = np.float64(X)
-    # Y = np.float64(Y)r
-    # Find rows with NaNs in X and Y to ensure continuity
-    nan_rows_X = np.any(np.isnan(X), axis=1)
-    nan_rows_Y = np.any(np.isnan(Y), axis=1)
-    nan_rows = nan_rows_X | nan_rows_Y   
-    # Filter out the rows with NaNs
-    X_clean, Y_clean = X[~nan_rows,:], Y[~nan_rows,:]
-    # Y_clean = np.maximum(Y_clean, eps)
-    # Y_clean = np.minimum(Y_clean, 1-eps)
-    print(f"Min value: {Y_clean.min()}, Max value: {Y_clean.max()}")
-    # Split into train and test sets
+def get_daily_vol_data() -> tuple:
+    """
+    Prepares and scales the dataset, splits it into train, validation, and test sets.
+
+    Returns:
+        tuple: Tuple containing train, validation, and test sets along with the scaler.
+    """
+    df = daily_vol_dataset()
+    df.columns = [chr(65 + i) for i in range(len(df.columns))]
+
+    window = WindowGenerator(input_width=1, label_width=1, shift=1, label_columns=df.columns)
+    X, Y = window.make_dataset(df)
+
+    nan_rows = np.any(np.isnan(X), axis=1) | np.any(np.isnan(Y), axis=1)
+    X_clean, Y_clean = X[~nan_rows], Y[~nan_rows]
+
     N = Y_clean.shape[0]
-    tst = N - 446
-    print(f"N: {N}")
-    tr = int(tst * 0.7)
-    val = int(tst * 0.3) + tr
-    train_data = (X_clean[0:tr], Y_clean[0:tr])
-    val_data = (X_clean[tr:val], Y_clean[tr:val])
-    test_data = (X_clean[val:], Y_clean[val:])
-    return (train_data, val_data, test_data), scaler
+    tst = 446
+    tr = N - tst
+
+
+    train_data = (X_clean[:tr], Y_clean[:tr])
+    test_data = (X_clean[tr:], Y_clean[tr:])
+
+    return train_data, test_data
+
 
 def main():
-    (train_data, val_data, test_data), scaler = get_uv_data()
+    """
+    Main function to prepare the dataset and split into train, validation, and test sets.
+    """
+    train_data, test_data = get_daily_vol_data()
     X_train, Y_train = train_data
-
-    X_val, Y_val = val_data
     X_test, Y_test = test_data
+    print(f"X train size: {X_train.shape}, Y train size: {Y_train.shape}")
+    print(f"X test size: {X_test.shape}, Y train size: {Y_test.shape}")
 
 
 if __name__ == "__main__":

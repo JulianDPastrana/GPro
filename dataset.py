@@ -13,11 +13,11 @@ def save_by_plant(df):
     return df_pivoted
 
 # Create a pydataxm.ReadDB instance
-start, end = dt.date(2010, 1, 1), dt.date(2024, 3, 22)
+start, end = dt.date(2024, 1, 1), dt.date(2024, 3, 22)
 api_object = pydataxm.ReadDB()
 
-df = api_object.get_collections()
-df.to_excel("get_collection.xlsx")
+# df = api_object.get_collections()
+# df.to_excel("get_collection.xlsx")
 
 # # USEFULL VOLUME 
 # df_sistema = api_object.request_data(
@@ -38,31 +38,32 @@ df.to_excel("get_collection.xlsx")
 # pivot_df.to_excel("capacity.xlsx")
 
 # PorcVoluUtilDiar 
-df_sistema = api_object.request_data(
-                                coleccion='PorcVoluUtilDiar',
-                                metrica='Embalse', 
-                                start_date=start, 
-                                end_date=end)
-pivot_df = df_sistema.pivot(index='Date', columns='Name', values='Value')
-pivot_df.to_excel("PorcVoluUtilDiar.xlsx")
-
-# # GENERATION
-# df_generacion = api_object.request_data(
-#                     coleccion="Gene",                 
-#                     metrica="Recurso",                     
-#                     start_date=start,       
-#                     end_date=end,          
-#                     )
-
 # df_sistema = api_object.request_data(
-#                                 'ListadoRecursos',
-#                                 'Sistema', 
-#                                 start, 
-#                                 end)
+#                                 coleccion='PorcVoluUtilDiar',
+#                                 metrica='Embalse', 
+#                                 start_date=start, 
+#                                 end_date=end)
+# pivot_df = df_sistema.pivot(index='Date', columns='Name', values='Value')
+# pivot_df.to_excel("PorcVoluUtilDiar.xlsx")
 
-# df_sistema = df_sistema[['Values_Code', 'Values_Name', 'Values_Type', 'Values_Disp']]
-# df = pd.merge(df_generacion,df_sistema,left_on=['Values_code'],right_on=['Values_Code'],how='left')
-# df = df.query('Values_Disp == "DESPACHADO CENTRALMENTE"')
+# GENERATION
+df_generacion = api_object.request_data(
+                    coleccion="Gene",                 
+                    metrica="Recurso",                     
+                    start_date=start,       
+                    end_date=end,          
+                    )
+# df_generacion.to_excel("generation_dataset.xlsx")
+df_sistema = api_object.request_data(
+                                'ListadoRecursos',
+                                'Sistema', 
+                                start, 
+                                end)
+
+df_sistema = df_sistema[['Values_Code', 'Values_Name', 'Values_Type', 'Values_Disp']]
+df = pd.merge(df_generacion,df_sistema,left_on=['Values_code'],right_on=['Values_Code'],how='left')
+df = df.query('Values_Disp == "DESPACHADO CENTRALMENTE"')
+df.to_excel("generation_dataset.xlsx")
 
 # # HYDRO
 # df_hidraulica = df.query('Values_Type == "HIDRAULICA"')
