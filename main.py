@@ -4,8 +4,7 @@ import gpflow as gpf
 import tensorflow_probability as tfp
 import pickle
 from data_exploration import get_daily_vol_data
-from metrics import negative_log_predictive_density, mean_squared_error, mean_absolute_error
-from metrics import train_model
+from metrics import *
 from likelihoods import MOChainedLikelihoodMC
 
 tf.keras.mixed_precision.set_global_policy('mixed_bfloat16')
@@ -24,23 +23,26 @@ def main():
 
     n_samples, input_dim = X_train.shape
     observation_dim = Y_train.shape[1]
-    num_inducing = 1024
-    ind_process_dim = 128
+    num_inducing = 150
+    ind_process_dim = 32
 
     latent_dim = 2 * observation_dim
 
-    kern_list = [gpf.kernels.SquaredExponential(lengthscales=np.ones(input_dim)) + 
-                 gpf.kernels.Linear(variance=np.ones(input_dim)) + 
-                 gpf.kernels.Constant() for _ in range(ind_process_dim)]
+    kern_list = [gpf.kernels.SquaredExponential(lengthscales=1*np.ones(input_dim)) for _ in range(ind_process_dim)]
     
     kernel = gpf.kernels.LinearCoregionalization(
-        kern_list, W=np.random.randn(latent_dim, ind_process_dim) + np.eye(latent_dim, ind_process_dim)
+        kern_list, W=np.eye(latent_dim, ind_process_dim)
     )
+    # kern_list = [gpf.kernels.SquaredExponential(lengthscales=10*np.ones(input_dim)) for _ in range(latent_dim)]
+    # kernel = gpf.kernels.SeparateIndependent(kern_list)
     
-    Zinit = np.random.rand(num_inducing, input_dim)
+    Zinit = X_train[np.random.choice(X_train.shape[0], num_inducing, replace=False), :]
     Zs = [Zinit.copy() for _ in range(ind_process_dim)]
     iv_list = [gpf.inducing_variables.InducingPoints(Z) for Z in Zs]
     iv = gpf.inducing_variables.SeparateIndependentInducingVariables(iv_list)
+    # iv = gpf.inducing_variables.SharedIndependentInducingVariables(
+    #     gpf.inducing_variables.InducingPoints(Zinit)
+    # )
     
     q_mu = np.zeros((num_inducing, ind_process_dim))
     q_sqrt = np.repeat(np.eye(num_inducing)[None, ...], ind_process_dim, axis=0) * 1.0
@@ -50,19 +52,32 @@ def main():
             latent_dim=latent_dim,
             observation_dim=observation_dim,
             distribution_class=tfp.distributions.Beta,
-            param1_transform=tfp.bijectors.Softplus(),
-            param2_transform=tfp.bijectors.Softplus()
+            param1_transform=tf.math.softplus,
+            param2_transform=tf.math.softplus
         )
     
     model = gpf.models.SVGP(
         kernel=kernel,
         likelihood=likelihood,
         inducing_variable=iv,
+        # num_latent_gps=latent_dim
         q_mu=q_mu,
         q_sqrt=q_sqrt
     )
 
-    train_model(model, train_data, batch_size=64, epochs=500)
+    model_name = f"/chd_LogitNormal_Q{latent_dim}_M{num_inducing}.pkl"
+
+    try:
+        with open(path + model_name, 'rb') as file:
+            params = pickle.load(file)
+        gpf.utilities.multiple_assign(model, params)
+        print("Model parameters loaded successfully.")
+    
+    except FileNotFoundError:    
+        train_model(model, train_data, batch_size=64, epochs=150)
+        # with open(path + model_name, 'wb') as handle:
+        #     pickle.dump(gpf.utilities.parameter_dict(model), handle)
+        print("Model trained and parameters saved successfully.")
 
     nlpd = negative_log_predictive_density(model, X_test, Y_test)
     mse = mean_squared_error(model, X_test, Y_test)
@@ -73,8 +88,18 @@ def main():
     print(f"MAE: {mae}")
 
 
-    with open(path + f"/chd_beta_Q{latent_dim}_M{num_inducing}.pkl", 'wb') as handle:
-        pickle.dump(gpf.utilities.parameter_dict(model), handle)
+
+
+    Y_mean, Y_var = model.predict_y(X_test)
+
+    for task in range(observation_dim):
+        plot_confidence_interval(
+            Y_mean[:, task],
+            Y_var[:, task],
+            task_name=str(task),
+            y_true=Y_test[:, task],
+            fname=path+str(task)+".png"
+        )
 
 if __name__ == "__main__": 
     main()

@@ -54,9 +54,9 @@ class MOChainedLikelihoodMC(MonteCarloLikelihood):
         """
         Fd1 = F[..., ::2]  # Extract even indices - mean
         Fd2 = F[..., 1::2]  # Extract odd indices - standard deviation
-        alpha = self.param1_transform(Fd1)
-        beta = self.param2_transform(Fd2)
-        dist = self.distribution_class(alpha, beta, force_probs_to_zero_outside_support=True)
+        param_1 = self.param1_transform(Fd1)
+        param_2 = self.param2_transform(Fd2)
+        dist = self.distribution_class(param_1, param_2)
         return tf.reduce_sum(dist.log_prob(Y), axis=-1)
 
     def _conditional_mean(self, X: tf.Tensor, F: tf.Tensor) -> tf.Tensor:
@@ -72,9 +72,9 @@ class MOChainedLikelihoodMC(MonteCarloLikelihood):
         """
         Fd1 = F[..., ::2]  # Extract even indices - mean
         Fd2 = F[..., 1::2]  # Extract odd indices - variance
-        alpha = self.param1_transform(Fd1)
-        beta = self.param2_transform(Fd2)
-        dist = self.distribution_class(alpha, beta, force_probs_to_zero_outside_support=True)
+        param_1 = self.param1_transform(Fd1)
+        param_2 = self.param2_transform(Fd2)
+        dist = self.distribution_class(param_1, param_2)
         return dist.mean()
 
     def _conditional_variance(self, X: tf.Tensor, F: tf.Tensor) -> tf.Tensor:
@@ -90,7 +90,7 @@ class MOChainedLikelihoodMC(MonteCarloLikelihood):
         """
         Fd1 = F[..., ::2]  # Extract even indices - mean
         Fd2 = F[..., 1::2]  # Extract odd indices - variance
-        alpha = self.param1_transform(Fd1)
-        beta = self.param2_transform(Fd2)
-        dist = self.distribution_class(alpha, beta, force_probs_to_zero_outside_support=True)
+        param_1 = self.param1_transform(Fd1)
+        param_2 = self.param2_transform(Fd2)
+        dist = self.distribution_class(param_1, param_2)
         return dist.variance()
