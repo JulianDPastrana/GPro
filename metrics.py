@@ -1,8 +1,27 @@
 import tensorflow as tf
+import gpflow as gpf
+import matplotlib.pyplot as plt
+import numpy as np
+import tensorflow_probability as tfp
+from typing import Optional
 from gpflow.models import GPModel
 from typing import Tuple
 from tqdm import tqdm
+from likelihoods import MOChainedLikelihoodMC
+import properscoring as ps
 
+# def crps_gaussian(model: GPModel, X_test: tf.Tensor, Y_test: tf.Tensor) -> tf.Tensor:
+
+#     return ps.crps_gaussian(y_true, y_mean, y_var)
+
+def mean_standardized_log_loss(y_mean, y_var, y_true, y_train):
+    model_nlp = (0.5 * np.log(2 * np.pi * y_var)
+                 + 0.5 * (y_true - y_mean) ** 2 / y_var)
+    mu, sig = y_train.mean(), y_train.var()
+    data_nlp = (0.5 * np.log(2 * np.pi * sig)
+                 + 0.5 * (y_true - mu) ** 2 / sig)
+    loss = np.mean(model_nlp - data_nlp)
+    return loss
 
 def continuous_ranked_probability_score(model: GPModel, X_test: tf.Tensor, Y_test: tf.Tensor, n_samples :int = 1500) -> tf.Tensor:
     """
@@ -85,7 +104,7 @@ def train_model(model: GPModel, data: Tuple[tf.Tensor, tf.Tensor], batch_size: i
     dataset = tf.data.Dataset.from_tensor_slices((X, Y))
     dataset = dataset.shuffle(buffer_size=len(X)).batch(batch_size)
 
-    adam_opt = tf.optimizers.Adam(0.01)
+    adam_opt = tf.optimizers.Adamax(0.05)
 
     @tf.function
     def optimization_step(batch_X: tf.Tensor, batch_Y: tf.Tensor) -> tf.Tensor:
@@ -103,5 +122,56 @@ def train_model(model: GPModel, data: Tuple[tf.Tensor, tf.Tensor], batch_size: i
                 loss = optimization_step(batch_X, batch_Y)
                 epoch_loss += loss
                 num_batches += 1
-                pbar.set_postfix_str(s=f"loss: {epoch_loss / num_batches:.4f}", refresh=True)
+                pbar.set_postfix_str(s=f"loss: {epoch_loss / num_batches:.4e}", refresh=True)
                 pbar.update(1)
+
+
+def plot_confidence_interval(
+    y_mean: np.ndarray, 
+    y_var: np.ndarray, 
+    task_name: str, 
+    fname: Optional[str] = None, 
+    y_true: Optional[np.ndarray] = None
+) -> None:
+    """
+    Plot the predictive mean and confidence intervals for a given task.
+
+    Parameters:
+        y_mean (np.ndarray): The predictive mean values.
+        y_var (np.ndarray): The predictive variance values.
+        task_name (str): The name of the task for labeling the plot.
+        fname (Optional[str]): The filename to save the plot. If None, the plot is displayed.
+        y_true (Optional[np.ndarray]): The true values to be plotted for comparison. If None, they are not plotted.
+
+    Returns:
+        None
+    """
+    time_range = range(len(y_mean))
+
+    # Plot the confidence intervals
+    for k in range(1, 3):
+        lb = y_mean - k * np.sqrt(y_var)
+        ub = y_mean + k * np.sqrt(y_var)
+        plt.fill_between(time_range, lb, ub, color="silver", alpha=1 - 0.05 * k ** 3, label=f'$\mp${k}$\sigma$ interval')
+
+    # Plot the predictive mean
+    plt.plot(time_range, y_mean, color="black", label="Predictive Mean")
+
+    # Plot the true values if provided
+    if y_true is not None:
+        plt.scatter(time_range, y_true, color="red", alpha=0.8, label="True Values")
+
+    # Add title and labels
+    plt.title(f"Output {task_name}")
+    plt.xlabel("Time")
+    plt.ylabel("Value")
+    plt.legend()
+
+    # Save or show the plot
+    if fname:
+        plt.savefig(fname)
+    else:
+        plt.show()
+
+    # Close the plot to free resources
+    plt.close()

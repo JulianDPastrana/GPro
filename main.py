@@ -5,7 +5,8 @@ import tensorflow_probability as tfp
 import pickle
 from data_exploration import get_daily_vol_data
 from metrics import *
-from likelihoods import MOChainedLikelihoodMC
+# from likelihoods import MOChainedLikelihoodMC
+from grid_search import *
 
 tf.keras.mixed_precision.set_global_policy('mixed_bfloat16')
 path = "./results"
@@ -21,49 +22,25 @@ def main():
     X_test, Y_test = test_data
     X_train, Y_train = train_data
 
-    n_samples, input_dim = X_train.shape
+    _, input_dim = X_train.shape
     observation_dim = Y_train.shape[1]
     num_inducing = 150
     ind_process_dim = 32
 
     latent_dim = 2 * observation_dim
 
-    kern_list = [gpf.kernels.SquaredExponential(lengthscales=1*np.ones(input_dim)) for _ in range(ind_process_dim)]
-    
-    kernel = gpf.kernels.LinearCoregionalization(
-        kern_list, W=np.eye(latent_dim, ind_process_dim)
+    model = chained_corr(
+        input_dim,
+        latent_dim,
+        observation_dim,
+        ind_process_dim,
+        num_inducing,
+        X_train
     )
-    # kern_list = [gpf.kernels.SquaredExponential(lengthscales=10*np.ones(input_dim)) for _ in range(latent_dim)]
-    # kernel = gpf.kernels.SeparateIndependent(kern_list)
-    
-    Zinit = X_train[np.random.choice(X_train.shape[0], num_inducing, replace=False), :]
-    Zs = [Zinit.copy() for _ in range(ind_process_dim)]
-    iv_list = [gpf.inducing_variables.InducingPoints(Z) for Z in Zs]
-    iv = gpf.inducing_variables.SeparateIndependentInducingVariables(iv_list)
-    # iv = gpf.inducing_variables.SharedIndependentInducingVariables(
-    #     gpf.inducing_variables.InducingPoints(Zinit)
-    # )
-    
-    q_mu = np.zeros((num_inducing, ind_process_dim))
-    q_sqrt = np.repeat(np.eye(num_inducing)[None, ...], ind_process_dim, axis=0) * 1.0
-    
-    likelihood = likelihood = MOChainedLikelihoodMC(
-            input_dim=input_dim,
-            latent_dim=latent_dim,
-            observation_dim=observation_dim,
-            distribution_class=tfp.distributions.Beta,
-            param1_transform=tf.math.softplus,
-            param2_transform=tf.math.softplus
-        )
-    
-    model = gpf.models.SVGP(
-        kernel=kernel,
-        likelihood=likelihood,
-        inducing_variable=iv,
-        # num_latent_gps=latent_dim
-        q_mu=q_mu,
-        q_sqrt=q_sqrt
-    )
+
+    # model = lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train)
+
+    # model = ind_gp(input_dim, observation_dim, num_inducing, X_train)
 
     model_name = f"/chd_LogitNormal_Q{latent_dim}_M{num_inducing}.pkl"
 
@@ -74,7 +51,7 @@ def main():
         print("Model parameters loaded successfully.")
     
     except FileNotFoundError:    
-        train_model(model, train_data, batch_size=64, epochs=150)
+        train_model(model, train_data, batch_size=8, epochs=150)
         # with open(path + model_name, 'wb') as handle:
         #     pickle.dump(gpf.utilities.parameter_dict(model), handle)
         print("Model trained and parameters saved successfully.")
@@ -86,8 +63,6 @@ def main():
     print(f"NLPD: {nlpd}")
     print(f"MSE: {mse}")
     print(f"MAE: {mae}")
-
-
 
 
     Y_mean, Y_var = model.predict_y(X_test)

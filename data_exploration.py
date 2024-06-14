@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from sklearn.preprocessing import MinMaxScaler
+
 
 class WindowGenerator:
     """
@@ -85,13 +85,16 @@ class WindowGenerator:
         return x_data, y_data
 
 
-def daily_vol_dataset() -> pd.DataFrame:
+
+def get_daily_vol_data(input_width: int = 1, label_width: int = 1, shift: int = 1) -> tuple:
     """
-    Loads and preprocesses the streamflow dataset.
+    Loads, preprocesses, scales the streamflow dataset, and splits it into 
+    train and test sets.
 
     Returns:
-        pd.DataFrame: The preprocessed streamflow dataset.
+        tuple: Tuple containing train and test sets.
     """
+    # Load and preprocess the dataset
     df = pd.read_excel(
         io="./PorcVoluUtilDiar.xlsx",
         header=0,
@@ -100,38 +103,33 @@ def daily_vol_dataset() -> pd.DataFrame:
     )
     eps = 1e-6
     df = df.clip(lower=eps, upper=1 - eps)
-    return df[
+    df = df[
         ["AGREGADO BOGOTA", "CALIMA1", "MIRAFLORES", "PENOL", "PLAYAS", "PUNCHINA", 
          "BETANIA", "CHUZA", "ESMERALDA", "GUAVIO", "PRADO", "RIOGRANDE2", "SAN LORENZO", 
          "TRONERAS", "URRA1", "SALVAJINA"]
     ]
 
-
-def get_daily_vol_data() -> tuple:
-    """
-    Prepares and scales the dataset, splits it into train, validation, and test sets.
-
-    Returns:
-        tuple: Tuple containing train, validation, and test sets along with the scaler.
-    """
-    df = daily_vol_dataset()
+    # Rename columns to single characters
     df.columns = [chr(65 + i) for i in range(len(df.columns))]
 
-    window = WindowGenerator(input_width=1, label_width=1, shift=1, label_columns=df.columns)
+    # Generate dataset windows
+    window = WindowGenerator(input_width, label_width, shift, label_columns=df.columns)
     X, Y = window.make_dataset(df)
 
+    # Remove rows with NaNs
     nan_rows = np.any(np.isnan(X), axis=1) | np.any(np.isnan(Y), axis=1)
     X_clean, Y_clean = X[~nan_rows], Y[~nan_rows]
 
+    # Split into training and testing sets
     N = Y_clean.shape[0]
     tst = 446
     tr = N - tst
-
 
     train_data = (X_clean[:tr], Y_clean[:tr])
     test_data = (X_clean[tr:], Y_clean[tr:])
 
     return train_data, test_data
+
 
 
 def main():
