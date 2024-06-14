@@ -145,9 +145,10 @@ def main():
                 X_train
             )
 
-            train_model(model, (X_train, Y_train), epochs=50)
+            train_model(model, (X_train, Y_train), batch_size=64, epochs=50)
 
             nlpd = negative_log_predictive_density(model, X_test, Y_test)
+            msll = mean_standardized_log_loss()
             mse = mean_squared_error(model, X_test, Y_test)
             mae = mean_absolute_error(model, X_test, Y_test)
 
