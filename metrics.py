@@ -10,32 +10,34 @@ from tqdm import tqdm
 from likelihoods import MOChainedLikelihoodMC
 import properscoring as ps
 
-# def crps_gaussian(model: GPModel, X_test: tf.Tensor, Y_test: tf.Tensor) -> tf.Tensor:
-
-#     return ps.crps_gaussian(y_true, y_mean, y_var)
-
-def mean_standardized_log_loss(y_mean, y_var, y_true, y_train):
-    model_nlp = (0.5 * np.log(2 * np.pi * y_var)
-                 + 0.5 * (y_true - y_mean) ** 2 / y_var)
-    mu, sig = y_train.mean(), y_train.var()
-    data_nlp = (0.5 * np.log(2 * np.pi * sig)
-                 + 0.5 * (y_true - mu) ** 2 / sig)
-    loss = np.mean(model_nlp - data_nlp)
-    return loss
-
-def continuous_ranked_probability_score(model: GPModel, X_test: tf.Tensor, Y_test: tf.Tensor, n_samples :int = 1500) -> tf.Tensor:
+def continuous_ranked_probability_score_gaussian(model: GPModel, X_test: tf.Tensor, Y_test: tf.Tensor) -> tf.Tensor:
     """
-    Computes the Continuous Ranked Probability Score (CRPS) of a GP model.
+    continuous_ranked_probability_score
+    """
+    Y_mean, Y_var = model.predict_y(X_test)
+    return ps.crps_gaussian(Y_test, Y_mean, Y_var).mean()
 
-    Args:
+def mean_standardized_log_loss(model: GPModel, X_test: tf.Tensor, Y_test: tf.Tensor, Y_train: tf.Tensor) -> tf.Tensor:
+    """
+    Computes the Mean Standardized Log Loss (MSLL) of a GP model
+        Args:
         model (GPModel): The GPflow model.
         X_test (tf.Tensor): The input test data.
         Y_test (tf.Tensor): The true output test data.
+        Y_train (tf.Tensor): The true output train data.
 
     Returns:
-        tf.Tensor: The CRPS.
+        tf.Tensor: The negative log predictive density.
     """
-    pass
+    Y_mean, Y_var = model.predict_y(X_test)
+    model_nlp = (0.5 * np.log(2 * np.pi * Y_var)
+                 + 0.5 * (Y_test - Y_mean) ** 2 / Y_var)
+    mu, sig = Y_train.mean(), Y_train.var()
+    data_nlp = (0.5 * np.log(2 * np.pi * sig)
+                 + 0.5 * (Y_test - mu) ** 2 / sig)
+    loss = np.mean(model_nlp - data_nlp)
+    return loss
+
 
 def negative_log_predictive_density(model: GPModel, X_test: tf.Tensor, Y_test: tf.Tensor) -> tf.Tensor:
     """
