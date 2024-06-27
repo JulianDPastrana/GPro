@@ -80,7 +80,7 @@ def ind_gp(input_dim, observation_dim, num_inducing, X_train):
         
     kernel = gpf.kernels.SeparateIndependent(kern_list)
     
-    Zinit = X_train[np.random.choice(X_train.shape[0], num_inducing, replace=False), :]
+    Zinit = X_train[np.random.choice(X_train.shape[0], num_inducing, replace=True), :]
     Zs = [Zinit.copy() for _ in range(observation_dim)]
     iv_list = [gpf.inducing_variables.InducingPoints(Z) for Z in Zs]
     iv = gpf.inducing_variables.SeparateIndependentInducingVariables(iv_list)
@@ -111,7 +111,7 @@ def main():
 
     n_splits = 5
     # Initialize TimeSeriesSplit
-    tscv = TimeSeriesSplit(n_splits=n_splits, max_train_size=500, test_size=500)
+    tscv = TimeSeriesSplit(n_splits=n_splits)
 
     # Multiindex DataFrame for results
     index = pd.MultiIndex.from_product(
