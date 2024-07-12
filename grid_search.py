@@ -51,7 +51,7 @@ def lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train):
     kern_list = [gpf.kernels.SquaredExponential(lengthscales=np.ones(input_dim)) for _ in range(ind_process_dim)]
         
     kernel = gpf.kernels.LinearCoregionalization(
-        kern_list, W=np.eye(observation_dim, ind_process_dim)+1e-3
+        kern_list, W=np.random.normal(size=(observation_dim, ind_process_dim))#+1e-3
     )
     
     Zinit = X_train[np.random.choice(X_train.shape[0], num_inducing, replace=False), :]
@@ -71,7 +71,7 @@ def lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train):
         q_mu=q_mu,
         q_sqrt=q_sqrt
     )
-
+ 
     return model
 
 def ind_gp(input_dim, observation_dim, num_inducing, X_train):
@@ -105,8 +105,8 @@ def main():
     tf.random.set_seed(0)
 
     # Define the grid of parameters to search
-    order_values = [1, 2, 3, 7, 14, 30]
-    num_inducing_values = [2 ** i for i in range(3, 10)]
+    order_values = [2]#[1, 2, 3, 7, 14, 30]
+    num_inducing_values = [8]#[2 ** i for i in range(3, 6)]
     ind_process_dim_values = [2 ** i for i in range(3, 10)]
 
     n_splits = 5
@@ -120,7 +120,7 @@ def main():
     )
     metrics = ["NLPD", "MSE", "MAE"]
     results_df = pd.DataFrame(index=index, columns=metrics)
-    filename = "chdgp_normal_gsresults.xlsx"
+    filename = "lmcgp_normal"
 
 
     for order, num_inducing, ind_process_dim in product(order_values, num_inducing_values, ind_process_dim_values):
@@ -140,16 +140,18 @@ def main():
 
             print(f"\t Train shape={X_train.shape}, Test shape={X_test.shape}")
 
-            model = chained_corr(
-                input_dim,
-                latent_dim,
-                observation_dim,
-                ind_process_dim,
-                num_inducing,
-                X_train
-            )
+            # model = chained_corr(
+            #     input_dim,
+            #     latent_dim,
+            #     observation_dim,
+            #     ind_process_dim,
+            #     num_inducing,
+            #     X_train
+            # )
 
-            train_model(model, (X_train, Y_train), batch_size=64, epochs=150)
+            model = lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train)
+
+            train_model(model, (X_train, Y_train), batch_size=64, epochs=150, patience=20)
 
             nlpd = negative_log_predictive_density(model, X_test, Y_test)
             msll = mean_standardized_log_loss(model, X_test, Y_test, Y_train)

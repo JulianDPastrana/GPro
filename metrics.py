@@ -90,15 +90,17 @@ def mean_absolute_error(model: GPModel, X_test: tf.Tensor, Y_test: tf.Tensor) ->
     return mae
 
 
-def train_model(model: GPModel, data: Tuple[tf.Tensor, tf.Tensor], batch_size: int = 64, epochs: int = 100) -> None:
+def train_model(model, data: Tuple[tf.Tensor, tf.Tensor], batch_size: int = 64, epochs: int = 100, patience: int = 3) -> None:
     """
-    Trains the GP model using minibatch optimization with verbose logging.
+    Trains the GP model using minibatch optimization with verbose logging and early stopping based on training loss.
+    Restores the model to the best state observed during training.
 
     Args:
-        model (GPModel): The GPflow model to be trained.
+        model: The GPflow model to be trained.
         data (Tuple[tf.Tensor, tf.Tensor]): The training data as a tuple (X, Y).
         batch_size (int): The size of the minibatches. Defaults to 64.
         epochs (int): The number of epochs for training. Defaults to 100.
+        patience (int): The number of epochs to wait for an improvement in training loss before stopping early. Defaults to 3.
     """
     X, Y = data
 
@@ -116,6 +118,11 @@ def train_model(model: GPModel, data: Tuple[tf.Tensor, tf.Tensor], batch_size: i
         adam_opt.apply_gradients(zip(gradients, model.trainable_variables))
         return loss
 
+    # Early stopping variables
+    best_train_loss = np.inf
+    epochs_without_improvement = 0
+    # best_parameters = gpf.utilities.parameter_dict(model)
+
     for epoch in range(1, epochs + 1):
         epoch_loss = 0.0
         num_batches = 0
@@ -127,6 +134,35 @@ def train_model(model: GPModel, data: Tuple[tf.Tensor, tf.Tensor], batch_size: i
                 pbar.set_postfix_str(s=f"loss: {epoch_loss / num_batches:.4e}", refresh=True)
                 pbar.update(1)
 
+        # Calculate average training loss for the epoch
+        avg_epoch_loss = epoch_loss / num_batches
+
+        # Check for improvement
+        if avg_epoch_loss < best_train_loss:
+            best_train_loss = avg_epoch_loss
+            epochs_without_improvement = 0
+            best_epoch = epoch
+            # Save the best parameters
+            # best_parameters = gpf.utilities.parameter_dict(model)
+            log_dir = "./checkpoints"
+            ckpt = tf.train.Checkpoint(model=model)
+            manager = tf.train.CheckpointManager(ckpt, log_dir, max_to_keep=3)
+            manager.save()
+        else:
+            epochs_without_improvement += 1
+
+        # Print training loss
+        print(f"Epoch {epoch}: Training loss: {avg_epoch_loss:.4e}")
+
+        # Early stopping check
+        if epochs_without_improvement >= patience:
+            print(f"Early stopping at epoch {epoch}. Best training loss: {best_train_loss:.4e} at epoch {best_epoch}")
+            # gpf.utilities.multiple_assign(model, best_parameters)
+            ckpt.restore(manager.latest_checkpoint)
+
+            break
+        
+    ckpt.restore(manager.latest_checkpoint)
 
 def plot_confidence_interval(
     y_mean: np.ndarray, 
