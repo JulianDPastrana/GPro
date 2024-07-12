@@ -49,9 +49,9 @@ def chained_corr(input_dim, latent_dim, observation_dim, ind_process_dim, num_in
 def lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train):
     # Create a list of base kernels for the Linear Coregionalization model
     kern_list = [gpf.kernels.SquaredExponential(lengthscales=np.ones(input_dim)) for _ in range(ind_process_dim)]
-        
+    W = np.random.normal(size=(observation_dim, ind_process_dim)) + np.eye(observation_dim, ind_process_dim)
     kernel = gpf.kernels.LinearCoregionalization(
-        kern_list, W=np.random.normal(size=(observation_dim, ind_process_dim))#+1e-3
+        kern_list, W=W
     )
     
     Zinit = X_train[np.random.choice(X_train.shape[0], num_inducing, replace=False), :]

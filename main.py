@@ -28,7 +28,7 @@ def main():
     _, input_dim = X_train.shape
     observation_dim = Y_train.shape[1]
     num_inducing = 2**3
-    ind_process_dim = 2**8
+    ind_process_dim = 2**5
 
     latent_dim = 2 * observation_dim
 
@@ -67,6 +67,7 @@ def main():
     train_model(model, train_data, batch_size=64, epochs=150, patience=20)
     gpf.set_trainable(model, False)
     gpf.set_trainable(model.kernel.W, True)
+    gpf.set_trainable(model.likelihood, True)
     train_model(model, train_data, batch_size=64, epochs=150, patience=20)
     sns.heatmap(model.kernel.W.numpy(), annot=True, fmt=".2f")
     plt.show()
