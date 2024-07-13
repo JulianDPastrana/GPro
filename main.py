@@ -28,7 +28,7 @@ def main():
     _, input_dim = X_train.shape
     observation_dim = Y_train.shape[1]
     num_inducing = 2**3
-    ind_process_dim = 2**5
+    ind_process_dim = 2**4
 
     latent_dim = 2 * observation_dim
 
@@ -62,11 +62,16 @@ def main():
     #     with open(path + model_name, 'wb') as handle:
     #         pickle.dump(gpf.utilities.parameter_dict(model), handle)
     #     print("Model trained and parameters saved successfully.")
-
+    model.kernel.W.assign(np.eye(observation_dim, ind_process_dim))
     gpf.set_trainable(model.kernel.W, False)
+    gpf.set_trainable(model.likelihood, True)
     train_model(model, train_data, batch_size=64, epochs=150, patience=20)
+    model.kernel.W.assign(np.random.normal(size=(observation_dim, ind_process_dim)))
     gpf.set_trainable(model, False)
     gpf.set_trainable(model.kernel.W, True)
+    gpf.set_trainable(model.likelihood, False)
+    train_model(model, train_data, batch_size=64, epochs=150, patience=20)
+    gpf.set_trainable(model, False)
     gpf.set_trainable(model.likelihood, True)
     train_model(model, train_data, batch_size=64, epochs=150, patience=20)
     sns.heatmap(model.kernel.W.numpy(), annot=True, fmt=".2f")

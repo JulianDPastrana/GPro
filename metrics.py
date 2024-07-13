@@ -108,7 +108,7 @@ def train_model(model, data: Tuple[tf.Tensor, tf.Tensor], batch_size: int = 64, 
     dataset = tf.data.Dataset.from_tensor_slices((X, Y))
     dataset = dataset.shuffle(buffer_size=len(X)).batch(batch_size)
 
-    adam_opt = tf.optimizers.Adamax(0.05)
+    adam_opt = tf.optimizers.Adamax(0.1)
 
     @tf.function
     def optimization_step(batch_X: tf.Tensor, batch_Y: tf.Tensor) -> tf.Tensor:
