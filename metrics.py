@@ -90,7 +90,7 @@ def mean_absolute_error(model: GPModel, X_test: tf.Tensor, Y_test: tf.Tensor) ->
     return mae
 
 
-def train_model(model, data: Tuple[tf.Tensor, tf.Tensor], batch_size: int = 64, epochs: int = 100, patience: int = 3) -> None:
+def train_model(model, data: Tuple[tf.Tensor, tf.Tensor], batch_size: int = 64, epochs: int = 100, patience: int = 3, lr=0.01) -> None:
     """
     Trains the GP model using minibatch optimization with verbose logging and early stopping based on training loss.
     Restores the model to the best state observed during training.
@@ -108,7 +108,7 @@ def train_model(model, data: Tuple[tf.Tensor, tf.Tensor], batch_size: int = 64, 
     dataset = tf.data.Dataset.from_tensor_slices((X, Y))
     dataset = dataset.shuffle(buffer_size=len(X)).batch(batch_size)
 
-    adam_opt = tf.optimizers.Adamax(0.1)
+    adam_opt = tf.optimizers.Adamax(learning_rate=lr)
 
     @tf.function
     def optimization_step(batch_X: tf.Tensor, batch_Y: tf.Tensor) -> tf.Tensor:
@@ -184,20 +184,20 @@ def plot_confidence_interval(
     Returns:
         None
     """
+    plt.figure(figsize=(16, 8))
     time_range = range(len(y_mean))
 
     # Plot the confidence intervals
-    for k in range(1, 3):
-        lb = y_mean - k * np.sqrt(y_var)
-        ub = y_mean + k * np.sqrt(y_var)
-        plt.fill_between(time_range, lb, ub, color="silver", alpha=1 - 0.05 * k ** 3, label=f'$\mp${k}$\sigma$ interval')
+    lb = y_mean - 2 * np.sqrt(y_var)
+    ub = y_mean + 2 * np.sqrt(y_var)
+    plt.fill_between(time_range, lb, ub, color="b", alpha=0.5, label=f'2 $\sigma$ interval')
 
     # Plot the predictive mean
-    plt.plot(time_range, y_mean, color="black", label="Predictive Mean")
+    plt.plot(time_range, y_mean, ".b-", label="Predictive Mean")
 
     # Plot the true values if provided
     if y_true is not None:
-        plt.scatter(time_range, y_true, color="red", alpha=0.8, label="True Values")
+        plt.plot(time_range, y_true, 'r.-', label="True Values")
 
     # Add title and labels
     plt.title(f"Output {task_name}")
