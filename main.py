@@ -194,6 +194,57 @@ def normalize_dataset(dataframe: pd.DataFrame) -> tuple:
     return norm_dataset, mean, std
 
 
+def plot_confidence_interval(
+    y_mean: np.ndarray, 
+    y_var: np.ndarray, 
+    task_name: str, 
+    fname: Optional[str] = None, 
+    y_true: Optional[np.ndarray] = None
+) -> None:
+    """
+    Plot the predictive mean and confidence intervals for a given task.
+
+    Parameters:
+        y_mean (np.ndarray): The predictive mean values.
+        y_var (np.ndarray): The predictive variance values.
+        task_name (str): The name of the task for labeling the plot.
+        fname (Optional[str]): The filename to save the plot. If None, the plot is displayed.
+        y_true (Optional[np.ndarray]): The true values to be plotted for comparison. If None, they are not plotted.
+
+    Returns:
+        None
+    """
+    plt.figure(figsize=(16, 8))
+    time_range = range(len(y_mean))
+
+    # Plot the confidence intervals
+    lb = y_mean - 2 * np.sqrt(y_var)
+    ub = y_mean + 2 * np.sqrt(y_var)
+    plt.fill_between(time_range, lb, ub, color="b", alpha=0.5, label=f'2 $\sigma$ interval')
+
+    # Plot the predictive mean
+    plt.plot(time_range, y_mean, ".b-", label="Predictive Mean")
+
+    # Plot the true values if provided
+    if y_true is not None:
+        plt.plot(time_range, y_true, 'r.-', label="True Values")
+
+    # Add title and labels
+    plt.title(f"Output {task_name}")
+    plt.xlabel("Time")
+    plt.ylabel("Value")
+    plt.legend()
+
+    # Save or show the plot
+    if fname:
+        plt.savefig(fname)
+    else:
+        plt.show()
+
+    # Close the plot to free resources
+    plt.close()
+
+
 def ind_gp(input_dim, observation_dim, num_inducing, X_train):
     # Create a list of base kernels for the Linear Coregionalization model
     kern_list = [
@@ -253,12 +304,12 @@ def lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train):
     return model
 
 
-def chd_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train):
+def chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train):
     kern_list = [
         gpf.kernels.SquaredExponential(
             lengthscales=np.random.uniform(0.01, np.log(input_dim)*np.sqrt(input_dim), size=input_dim)) for _ in range(ind_process_dim)
         ]
-    W = np.random.randn(latent_dim, ind_process_dim) #+ np.eye(observation_dim, ind_process_dim)
+    W = np.eye(latent_dim, ind_process_dim) + 1e-3
     kernel = gpf.kernels.LinearCoregionalization(
         kern_list, W=W
     )
@@ -278,7 +329,7 @@ def chd_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing
             observation_dim=observation_dim,
             distribution_class=tfp.distributions.Normal,
             param1_transform=tfp.bijectors.Identity(),
-            param2_transform=tfp.bijectors.Exp()
+            param2_transform=tfp.bijectors.Softplus()
         )
     
     model = gpf.models.SVGP(
@@ -291,6 +342,60 @@ def chd_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing
 
     return model
 
+
+def chd_ind_gp(input_dim, latent_dim, observation_dim, num_inducing, X_train):
+    kern_list = [
+        gpf.kernels.SquaredExponential(
+            lengthscales=np.random.uniform(0.01, np.log(input_dim)*np.sqrt(input_dim), size=input_dim)) for _ in range(latent_dim)
+        ]
+        
+    kernel = gpf.kernels.SeparateIndependent(kern_list)
+
+    Zinit = np.random.uniform(X_train.min(axis=0), X_train.max(axis=0), size=(num_inducing, input_dim))
+    iv = gpf.inducing_variables.SharedIndependentInducingVariables(
+            gpf.inducing_variables.InducingPoints(Zinit)
+        )
+
+    
+    likelihood = MOChainedLikelihoodMC(
+            input_dim=input_dim,
+            latent_dim=latent_dim,
+            observation_dim=observation_dim,
+            distribution_class=tfp.distributions.Normal,
+            param1_transform=tfp.bijectors.Identity(),
+            param2_transform=tfp.bijectors.Softplus
+            ()
+        )
+    
+    model = gpf.models.SVGP(
+        kernel=kernel,
+        likelihood=likelihood,
+        inducing_variable=iv,
+        num_latent_gps=latent_dim
+    )
+
+    return model
+
+def dump_load_model(
+        path,
+        model_name,
+        model
+):
+
+    try:
+        with open(path + model_name, 'rb') as file:
+            params = pickle.load(file)
+        gpf.utilities.multiple_assign(model, params)
+        print("Model parameters loaded successfully.")
+
+    except FileNotFoundError:
+        train_model(model, data=train_data)
+        with open(path + model_name, 'wb') as handle:
+            pickle.dump(gpf.utilities.parameter_dict(model), handle)
+        print("Model trained and parameters saved successfully.")
+
+
+    
 
 def ind_model():
     path = "./ind_tests"
@@ -440,10 +545,8 @@ def lmcpre_model():
         # model.q_sqrt.assign(params[f".q_sqrt"].numpy()[sort_idx][:i+1])
         # model.likelihood.variance.assign(params[".likelihood.variance"])
 
-        model.kernel.W.assign(W_sort[:, :q])
-
+        model.kernel.W.assign(W_sort[:, :q])    
         model_name = f"/lmc_gp_q{q}.pkl"
-        gpf.set_trainable(model.kernel.W, False)
          
         try:
             with open(path + model_name, 'rb') as file:
@@ -481,27 +584,54 @@ def lmcpre_model():
                             mode='w') as writer:
                 results_df.to_excel(writer)
 
-def chd_model():
+
+def chd_ind_model():
+    path = "./chd_ind_tests"
+    latent_dim = 2 * observation_dim
+    model = chd_ind_gp(input_dim, latent_dim, observation_dim, num_inducing, X_train)
+    model_name = f"/chdindgp_Normal_T{order}_M{num_inducing}_softplus.pkl"
+
+    dump_load_model(path, model_name, model)
+        
+
+    nlpd = negative_log_predictive_density(model, X_test, Y_test)
+    msll = mean_standardized_log_loss(model, X_test, Y_test, Y_train)
+    crps = continuous_ranked_probability_score_gaussian(model, X_test, Y_test)
+    mse = mean_squared_error(model, X_test, Y_test)
+    mae = mean_absolute_error(model, X_test, Y_test)
+
+    print(f"NLPD: {nlpd}")
+    print(f"MSLL: {msll}")
+    print(f"CRPS: {crps}")
+    print(f"MSE: {mse}")
+    print(f"MAE: {mae}")
+
+    Y_mean, Y_var = model.predict_f(X_test)
+
+    for task in range(observation_dim):
+        plot_confidence_interval(
+            y_mean=Y_mean[:, task],
+            y_var=Y_var[:, task],
+            task_name=f"task_{task}",
+            fname=path+f"/task_{task}",
+            y_true=Y_test[:, task]
+        )
+
+
+def chd_corr_model():
     path = "./chd_tests"
     filename = "/chd_grid_Q_Normal"
     results_df = pd.DataFrame()
-    for q in [10]:
+    latent_dim = 2 * observation_dim
+    for q in range(1, 2*observation_dim+1):
+        break
+        print(f"q: {q}")
         ind_process_dim = q
-        latent_dim = 2 * observation_dim
-        model = chd_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train)
-        print(f"Likelihood's expected latent_dim: {model.likelihood.latent_dim}")
+        model = chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train)
         model_name = f"/chdgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}_Normal.pkl"
-        gpf.utilities.print_summary(model)
-        train_model(model, data=train_data)
+        
+        dump_load_model(path, model_name, model)
 
-        with open(path + model_name, 'wb') as handle:
-            pickle.dump(gpf.utilities.parameter_dict(model), handle)
-        print("Model trained and parameters saved successfully.")
-
-        with open(path + model_name, 'rb') as file:
-            params = pickle.load(file)
-        gpf.utilities.multiple_assign(model, params)
-        print("Model parameters loaded successfully.")
 
         plt.figure(figsize=(16, 8))
         sns.heatmap(model.kernel.W.numpy(), annot=True, fmt=".2f")
@@ -529,6 +659,37 @@ def chd_model():
             with pd.ExcelWriter(path + filename + ".xlsx",
                             mode='w') as writer:
                 results_df.to_excel(writer)
+
+    ind_process_dim = 22
+    model = chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train)
+    model_name = f"/chdgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}_Normal.pkl"
+        
+    dump_load_model(path, model_name, model)
+        
+
+    nlpd = negative_log_predictive_density(model, X_test, Y_test)
+    msll = mean_standardized_log_loss(model, X_test, Y_test, Y_train)
+    crps = continuous_ranked_probability_score_gaussian(model, X_test, Y_test)
+    mse = mean_squared_error(model, X_test, Y_test)
+    mae = mean_absolute_error(model, X_test, Y_test)
+
+    print(f"NLPD: {nlpd}")
+    print(f"MSLL: {msll}")
+    print(f"CRPS: {crps}")
+    print(f"MSE: {mse}")
+    print(f"MAE: {mae}")
+
+    Y_mean, Y_var = model.predict_f(X_test)
+
+    for task in range(observation_dim):
+        plot_confidence_interval(
+            y_mean=Y_mean[:, task],
+            y_var=Y_var[:, task],
+            task_name=f"task_{task}",
+            fname=path+f"/task_{task}",
+            y_true=Y_test[:, task]
+        )
+
 
 
 if __name__ == "__main__": 
@@ -567,4 +728,4 @@ if __name__ == "__main__":
     observation_dim = Y_train.shape[1]
     num_inducing = 64
 
-    lmcpre_model()
+    chd_corr_model()
