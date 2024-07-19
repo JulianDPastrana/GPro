@@ -94,7 +94,7 @@ def mean_absolute_error(model: GPModel, X_test: tf.Tensor, Y_test: tf.Tensor) ->
 
 
 
-def train_model(model, data: Tuple[tf.Tensor, tf.Tensor], epochs: int = 5000, patience: int = 50) -> None:
+def train_model(model, data: Tuple[tf.Tensor, tf.Tensor], epochs: int = 50000, patience: int = np.inf) -> None:
     """
     Trains the GP model using minibatch optimization with verbose logging and early stopping based on training loss.
     Restores the model to the best state observed during training.
@@ -114,10 +114,12 @@ def train_model(model, data: Tuple[tf.Tensor, tf.Tensor], epochs: int = 5000, pa
     gpf.utilities.set_trainable(model.q_sqrt, False)
 
     variational_vars = [(model.q_mu, model.q_sqrt)]
-    natgrad_opt = gpf.optimizers.NaturalGradient(gamma=0.1)
+    natgrad_opt = gpf.optimizers.NaturalGradient(gamma=0.01)
+    # print(natgrad_opt.xi_transform)
+    # assert 0==1
 
     adam_vars = model.trainable_variables
-    adam_opt = tf.optimizers.Adam(0.01)
+    adam_opt = tf.optimizers.Adam(0.001)
 
 
     @tf.function
@@ -309,7 +311,14 @@ def chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_indu
         gpf.kernels.SquaredExponential(
             lengthscales=np.random.uniform(0.01, np.log(input_dim)*np.sqrt(input_dim), size=input_dim)) for _ in range(ind_process_dim)
         ]
-    W = np.eye(latent_dim, ind_process_dim) + 1e-3
+    # W = np.random.uniform(-0.25, 0.25, size=(latent_dim, ind_process_dim))
+    
+    # assert 0 == 1
+    # * 0.01 * np.log(latent_dim)*np.sqrt(ind_process_dim)
+    # W = np.random.uniform(0.01, np.log(latent_dim)*np.sqrt(ind_process_dim), size=(latent_dim, ind_process_dim))
+    
+    W = np.random.randn(latent_dim, ind_process_dim) * 0.1
+
     kernel = gpf.kernels.LinearCoregionalization(
         kern_list, W=W
     )
@@ -328,8 +337,8 @@ def chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_indu
             latent_dim=latent_dim,
             observation_dim=observation_dim,
             distribution_class=tfp.distributions.Normal,
-            param1_transform=tfp.bijectors.Identity(),
-            param2_transform=tfp.bijectors.Softplus()
+            param1_transform=lambda x: x,
+            param2_transform=tf.math.softplus
         )
     
     model = gpf.models.SVGP(
@@ -362,9 +371,8 @@ def chd_ind_gp(input_dim, latent_dim, observation_dim, num_inducing, X_train):
             latent_dim=latent_dim,
             observation_dim=observation_dim,
             distribution_class=tfp.distributions.Normal,
-            param1_transform=tfp.bijectors.Identity(),
-            param2_transform=tfp.bijectors.Softplus
-            ()
+            param1_transform=lambda x: x,
+            param2_transform=tf.math.softplus
         )
     
     model = gpf.models.SVGP(
@@ -402,16 +410,8 @@ def ind_model():
     model = ind_gp(input_dim, observation_dim, num_inducing, X_train)
     model_name = f"/indgp_Normal_T{order}_M{num_inducing}.pkl"
 
-    train_model(model, data=train_data)
-
-    with open(path + model_name, 'wb') as handle:
-        pickle.dump(gpf.utilities.parameter_dict(model), handle)
-    print("Model trained and parameters saved successfully.")
-
-    with open(path + model_name, 'rb') as file:
-        params = pickle.load(file)
-    gpf.utilities.multiple_assign(model, params)
-    print("Model parameters loaded successfully.")
+    dump_load_model(path, model_name, model)
+        
 
     nlpd = negative_log_predictive_density(model, X_test, Y_test)
     msll = mean_standardized_log_loss(model, X_test, Y_test, Y_train)
@@ -424,6 +424,17 @@ def ind_model():
     print(f"CRPS: {crps}")
     print(f"MSE: {mse}")
     print(f"MAE: {mae}")
+
+    Y_mean, Y_var = model.predict_y(X_test)
+
+    for task in range(observation_dim):
+        plot_confidence_interval(
+            y_mean=Y_mean[:, task],
+            y_var=Y_var[:, task],
+            task_name=f"task_{task}",
+            fname=path+f"/task_{task}",
+            y_true=Y_test[:, task]
+        )
 
 def lmc_model():
     path = "./lmc_tests"
@@ -606,7 +617,7 @@ def chd_ind_model():
     print(f"MSE: {mse}")
     print(f"MAE: {mae}")
 
-    Y_mean, Y_var = model.predict_f(X_test)
+    Y_mean, Y_var = model.predict_y(X_test)
 
     for task in range(observation_dim):
         plot_confidence_interval(
@@ -624,7 +635,7 @@ def chd_corr_model():
     results_df = pd.DataFrame()
     latent_dim = 2 * observation_dim
     for q in range(1, 2*observation_dim+1):
-        break
+        # break
         print(f"q: {q}")
         ind_process_dim = q
         model = chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train)
@@ -660,35 +671,39 @@ def chd_corr_model():
                             mode='w') as writer:
                 results_df.to_excel(writer)
 
-    ind_process_dim = 22
-    model = chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train)
-    model_name = f"/chdgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}_Normal.pkl"
+    # ind_process_dim = 46
+    # model = chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train)
+    # model_name = f"/chdgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}_Normal.pkl"
+
+    # with open(f"chd_ind_tests/chdindgp_Normal_T{order}_M{num_inducing}_softplus.pkl", 'rb') as file:
+    #     params_ind = pickle.load(file)
+    # gpf.utilities.multiple_assign(model, params_ind)
+
+    # dump_load_model(path, model_name, model)
         
-    dump_load_model(path, model_name, model)
-        
 
-    nlpd = negative_log_predictive_density(model, X_test, Y_test)
-    msll = mean_standardized_log_loss(model, X_test, Y_test, Y_train)
-    crps = continuous_ranked_probability_score_gaussian(model, X_test, Y_test)
-    mse = mean_squared_error(model, X_test, Y_test)
-    mae = mean_absolute_error(model, X_test, Y_test)
+    # nlpd = negative_log_predictive_density(model, X_test, Y_test)
+    # msll = mean_standardized_log_loss(model, X_test, Y_test, Y_train)
+    # crps = continuous_ranked_probability_score_gaussian(model, X_test, Y_test)
+    # mse = mean_squared_error(model, X_test, Y_test)
+    # mae = mean_absolute_error(model, X_test, Y_test)
 
-    print(f"NLPD: {nlpd}")
-    print(f"MSLL: {msll}")
-    print(f"CRPS: {crps}")
-    print(f"MSE: {mse}")
-    print(f"MAE: {mae}")
+    # print(f"NLPD: {nlpd}")
+    # print(f"MSLL: {msll}")
+    # print(f"CRPS: {crps}")
+    # print(f"MSE: {mse}")
+    # print(f"MAE: {mae}")
 
-    Y_mean, Y_var = model.predict_f(X_test)
+    # Y_mean, Y_var = model.predict_y(X_test)
 
-    for task in range(observation_dim):
-        plot_confidence_interval(
-            y_mean=Y_mean[:, task],
-            y_var=Y_var[:, task],
-            task_name=f"task_{task}",
-            fname=path+f"/task_{task}",
-            y_true=Y_test[:, task]
-        )
+    # for task in range(observation_dim):
+    #     plot_confidence_interval(
+    #         y_mean=Y_mean[:, task],
+    #         y_var=Y_var[:, task],
+    #         task_name=f"task_{task}",
+    #         fname=path+f"/task_{task}",
+    #         y_true=Y_test[:, task]
+    #     )
 
 
 
