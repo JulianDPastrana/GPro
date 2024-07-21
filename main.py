@@ -335,8 +335,8 @@ def chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_indu
             input_dim=input_dim,
             latent_dim=latent_dim,
             observation_dim=observation_dim,
-            distribution_class=tfp.distributions.Normal,
-            param1_transform=lambda x: x,
+            distribution_class=tfp.distributions.Gamma,
+            param1_transform=tf.math.softplus,
             param2_transform=tf.math.softplus
         )
     
@@ -630,17 +630,19 @@ def chd_ind_model():
 
 
 def chd_corr_model():
-    path = "./chd_tests"
+    # path = "./chd_tests"
+    path = "./chd_lmc_gamma"
     filename = "/chd_grid_Q_Normal"
     results_df = pd.DataFrame()
     latent_dim = 2 * observation_dim
-    for q in range(1, 2*observation_dim+1):
+    for q in range(31, 2*observation_dim+1):
         # break
         print(f"q: {q}")
         ind_process_dim = q
         model = chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train)
-        model_name = f"/chdgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}_Normal.pkl"
-        
+        # model_name = f"/chdgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}_Normal.pkl"
+        model_name = f"/chd_Gamma_T{order}_M{num_inducing}_Q{ind_process_dim}.pkl"
+
         dump_load_model(path, model_name, model)
 
 
@@ -749,4 +751,4 @@ if __name__ == "__main__":
     observation_dim = Y_train.shape[1]
     num_inducing = 64
 
-    chd_ind_model()
+    chd_corr_model()
