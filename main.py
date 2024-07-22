@@ -94,7 +94,7 @@ def mean_absolute_error(model: GPModel, X_test: tf.Tensor, Y_test: tf.Tensor) ->
 
 
 
-def train_model(model, data: Tuple[tf.Tensor, tf.Tensor], epochs: int = 50000, patience: int = np.inf) -> None:
+def train_model(model, data: Tuple[tf.Tensor, tf.Tensor], epochs: int = 5000, patience: int = 150) -> None:
     """
     Trains the GP model using minibatch optimization with verbose logging and early stopping based on training loss.
     Restores the model to the best state observed during training.
@@ -114,14 +114,13 @@ def train_model(model, data: Tuple[tf.Tensor, tf.Tensor], epochs: int = 50000, p
     gpf.utilities.set_trainable(model.q_sqrt, False)
 
     variational_vars = [(model.q_mu, model.q_sqrt)]
-    natgrad_opt = gpf.optimizers.NaturalGradient(gamma=0.01)
+    natgrad_opt = gpf.optimizers.NaturalGradient(gamma=0.1)
     # print(natgrad_opt.xi_transform)
     # assert 0==1
 
     adam_vars = model.trainable_variables
-    adam_opt = tf.optimizers.Adam(0.001)
-
-
+    adam_opt = tf.optimizers.Adam(0.01)
+    
     @tf.function
     def optimisation_step():
         natgrad_opt.minimize(loss_fn, variational_vars)
@@ -336,8 +335,8 @@ def chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_indu
             input_dim=input_dim,
             latent_dim=latent_dim,
             observation_dim=observation_dim,
-            distribution_class=tfp.distributions.Normal,
-            param1_transform=lambda x: x,
+            distribution_class=tfp.distributions.Gamma,
+            param1_transform=tf.math.softplus,
             param2_transform=tf.math.softplus
         )
     
@@ -370,8 +369,8 @@ def chd_ind_gp(input_dim, latent_dim, observation_dim, num_inducing, X_train):
             input_dim=input_dim,
             latent_dim=latent_dim,
             observation_dim=observation_dim,
-            distribution_class=tfp.distributions.Normal,
-            param1_transform=lambda x: x,
+            distribution_class=tfp.distributions.Gamma,
+            param1_transform=tf.math.softplus,
             param2_transform=tf.math.softplus
         )
     
@@ -597,11 +596,12 @@ def lmcpre_model():
 
 
 def chd_ind_model():
-    path = "./chd_ind_tests"
+    # path = "./chd_ind_tests"
+    path = "./chd_ind_lognormal"
     latent_dim = 2 * observation_dim
     model = chd_ind_gp(input_dim, latent_dim, observation_dim, num_inducing, X_train)
-    model_name = f"/chdindgp_Normal_T{order}_M{num_inducing}_softplus.pkl"
-
+    # model_name = f"/chdindgp_Normal_T{order}_M{num_inducing}_softplus.pkl"
+    model_name = f"/chdindgp_LogNormal_T{order}_M{num_inducing}.pkl"
     dump_load_model(path, model_name, model)
         
 
@@ -630,17 +630,19 @@ def chd_ind_model():
 
 
 def chd_corr_model():
-    path = "./chd_tests"
+    # path = "./chd_tests"
+    path = "./chd_lmc_gamma"
     filename = "/chd_grid_Q_Normal"
     results_df = pd.DataFrame()
     latent_dim = 2 * observation_dim
-    for q in range(1, 2*observation_dim+1):
+    for q in range(32, 2*observation_dim+1):
         # break
         print(f"q: {q}")
         ind_process_dim = q
         model = chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train)
-        model_name = f"/chdgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}_Normal.pkl"
-        
+        # model_name = f"/chdgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}_Normal.pkl"
+        model_name = f"/chd_Gamma_T{order}_M{num_inducing}_Q{ind_process_dim}.pkl"
+
         dump_load_model(path, model_name, model)
 
 
@@ -710,17 +712,23 @@ def chd_corr_model():
 if __name__ == "__main__": 
 
     # Set seed for NumPy
-    np.random.seed(0)
+    np.random.seed(10)
     # Set seed for GPflow
-    tf.random.set_seed(0)
+    tf.random.set_seed(10)
     tf.keras.mixed_precision.set_global_policy('mixed_bfloat16')
 
     ct_data = load_datasets()
     indexes = [2, 9, 11, 12, 13, 14, 16, 17, 19, 21, 3, 6, 0, 5, 7, 8, 10, 1, 4, 18, 22, 20, 15]
     ct_data = ct_data.iloc[:, indexes]
-    norm_data, data_mean, data_std = normalize_dataset(ct_data)
-    data_mean = data_mean.values
-    data_std = data_std.values
+    # norm_data, data_mean, data_std = normalize_dataset(ct_data)
+    # data_mean = data_mean.values
+    # data_std = data_std.values
+    max_data = ct_data.max()
+    norm_data = ct_data / max_data
+    eps = 1e-3
+    norm_data.fillna(eps, inplace=True)
+    norm_data[norm_data <= 0] = eps
+
     # Create windows
     order = 1
     input_width = order
