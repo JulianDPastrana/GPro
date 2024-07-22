@@ -635,7 +635,7 @@ def chd_corr_model():
     filename = "/chd_grid_Q_Normal"
     results_df = pd.DataFrame()
     latent_dim = 2 * observation_dim
-    for q in range(31, 2*observation_dim+1):
+    for q in range(32, 2*observation_dim+1):
         # break
         print(f"q: {q}")
         ind_process_dim = q
@@ -712,9 +712,9 @@ def chd_corr_model():
 if __name__ == "__main__": 
 
     # Set seed for NumPy
-    np.random.seed(0)
+    np.random.seed(10)
     # Set seed for GPflow
-    tf.random.set_seed(0)
+    tf.random.set_seed(10)
     tf.keras.mixed_precision.set_global_policy('mixed_bfloat16')
 
     ct_data = load_datasets()
