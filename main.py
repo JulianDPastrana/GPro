@@ -316,7 +316,7 @@ def chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_indu
     # * 0.01 * np.log(latent_dim)*np.sqrt(ind_process_dim)
     # W = np.random.uniform(0.01, np.log(latent_dim)*np.sqrt(ind_process_dim), size=(latent_dim, ind_process_dim))
     
-    W = np.random.randn(latent_dim, ind_process_dim) * 0.1
+    W = np.random.randn(latent_dim, ind_process_dim) * 0.1 / 2
 
     kernel = gpf.kernels.LinearCoregionalization(
         kern_list, W=W
@@ -335,8 +335,8 @@ def chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_indu
             input_dim=input_dim,
             latent_dim=latent_dim,
             observation_dim=observation_dim,
-            distribution_class=tfp.distributions.Gamma,
-            param1_transform=tf.math.softplus,
+            distribution_class=tfp.distributions.Normal,
+            param1_transform=lambda x: x,
             param2_transform=tf.math.softplus
         )
     
@@ -630,18 +630,18 @@ def chd_ind_model():
 
 
 def chd_corr_model():
-    # path = "./chd_tests"
-    path = "./chd_lmc_gamma"
+    path = "./chd_tests"
+    # path = "./chd_lmc_gamma"
     filename = "/chd_grid_Q_Normal"
     results_df = pd.DataFrame()
     latent_dim = 2 * observation_dim
-    for q in range(32, 2*observation_dim+1):
+    for q in range(36, 2*observation_dim+1):
         # break
         print(f"q: {q}")
         ind_process_dim = q
         model = chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train)
-        # model_name = f"/chdgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}_Normal.pkl"
-        model_name = f"/chd_Gamma_T{order}_M{num_inducing}_Q{ind_process_dim}.pkl"
+        model_name = f"/chdgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}_Normal.pkl"
+        # model_name = f"/chd_Gamma_T{order}_M{num_inducing}_Q{ind_process_dim}.pkl"
 
         dump_load_model(path, model_name, model)
 
@@ -673,61 +673,62 @@ def chd_corr_model():
                             mode='w') as writer:
                 results_df.to_excel(writer)
 
-    # ind_process_dim = 46
-    # model = chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train)
-    # model_name = f"/chdgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}_Normal.pkl"
+    ind_process_dim = 5
+    model = chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train)
+    model_name = f"/chdgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}_Normal.pkl"
 
-    # with open(f"chd_ind_tests/chdindgp_Normal_T{order}_M{num_inducing}_softplus.pkl", 'rb') as file:
-    #     params_ind = pickle.load(file)
-    # gpf.utilities.multiple_assign(model, params_ind)
+    with open(f"chd_tests"+model_name, 'rb') as file:
+         params_ind = pickle.load(file)
+    gpf.utilities.multiple_assign(model, params_ind)
 
-    # dump_load_model(path, model_name, model)
+    dump_load_model(path, model_name, model)
         
 
-    # nlpd = negative_log_predictive_density(model, X_test, Y_test)
-    # msll = mean_standardized_log_loss(model, X_test, Y_test, Y_train)
-    # crps = continuous_ranked_probability_score_gaussian(model, X_test, Y_test)
-    # mse = mean_squared_error(model, X_test, Y_test)
-    # mae = mean_absolute_error(model, X_test, Y_test)
+    nlpd = negative_log_predictive_density(model, X_test, Y_test)
+    msll = mean_standardized_log_loss(model, X_test, Y_test, Y_train)
+    crps = continuous_ranked_probability_score_gaussian(model, X_test, Y_test)
+    mse = mean_squared_error(model, X_test, Y_test)
+    mae = mean_absolute_error(model, X_test, Y_test)
 
-    # print(f"NLPD: {nlpd}")
-    # print(f"MSLL: {msll}")
-    # print(f"CRPS: {crps}")
-    # print(f"MSE: {mse}")
-    # print(f"MAE: {mae}")
+    print(f"NLPD: {nlpd}")
+    print(f"MSLL: {msll}")
+    print(f"CRPS: {crps}")
+    print(f"MSE: {mse}")
+    print(f"MAE: {mae}")
 
-    # Y_mean, Y_var = model.predict_y(X_test)
+    Y_mean, Y_var = model.predict_y(X_test)
 
-    # for task in range(observation_dim):
-    #     plot_confidence_interval(
-    #         y_mean=Y_mean[:, task],
-    #         y_var=Y_var[:, task],
-    #         task_name=f"task_{task}",
-    #         fname=path+f"/task_{task}",
-    #         y_true=Y_test[:, task]
-    #     )
+    for task in range(observation_dim):
+        plot_confidence_interval(
+             y_mean=Y_mean[:, task],
+             y_var=Y_var[:, task],
+             task_name=f"task_{task}",
+             fname=path+f"/task_{task}",
+             y_true=Y_test[:, task]
+         )
 
 
 
 if __name__ == "__main__": 
 
     # Set seed for NumPy
-    np.random.seed(10)
+    np.random.seed(1966)
     # Set seed for GPflow
-    tf.random.set_seed(10)
+    tf.random.set_seed(1966)
     tf.keras.mixed_precision.set_global_policy('mixed_bfloat16')
 
     ct_data = load_datasets()
     indexes = [2, 9, 11, 12, 13, 14, 16, 17, 19, 21, 3, 6, 0, 5, 7, 8, 10, 1, 4, 18, 22, 20, 15]
     ct_data = ct_data.iloc[:, indexes]
-    # norm_data, data_mean, data_std = normalize_dataset(ct_data)
-    # data_mean = data_mean.values
-    # data_std = data_std.values
-    max_data = ct_data.max()
-    norm_data = ct_data / max_data
-    eps = 1e-3
-    norm_data.fillna(eps, inplace=True)
-    norm_data[norm_data <= 0] = eps
+    norm_data, data_mean, data_std = normalize_dataset(ct_data)
+    data_mean = data_mean.values
+    data_std = data_std.values
+    
+    # max_data = ct_data.max()
+    # norm_data = ct_data / max_data
+    # eps = 1e-3
+    # norm_data.fillna(eps, inplace=True)
+    # norm_data[norm_data <= 0] = eps
 
     # Create windows
     order = 1
