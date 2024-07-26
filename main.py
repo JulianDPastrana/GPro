@@ -12,7 +12,76 @@ from likelihoods import MOChainedLikelihoodMC
 import properscoring as ps
 import matplotlib.pyplot as plt
 
-# A simple comment
+def plot_predict_log_density(
+    model,
+    X,
+    Y,
+    task,
+    path
+):
+    """
+    Plot the predictive density of a model's forecasts along with the observed data.
+
+    Parameters:
+    model (Any): The trained model that provides predictive distribution and likelihood functions.
+    X (np.ndarray): The input features of the dataset, typically time indices in forecast scenarios.
+    Y (np.ndarray): The target values of the dataset, typically quantities like power generation.
+    task (int): The index of the task for which the model is trained.
+
+    The function saves the plot as 'predictive_density.png' in the current directory.
+
+    The plotting includes the observation points, the mean of the forecast, and the
+    contour fill of the predictive density distribution.
+    """
+    
+    # Initialize the time index for X-axis
+    time_index = np.arange(X.shape[0])[:, None]
+    # Define constants for the number of samples and Y-axis pixels
+    num_samples = 15
+    num_y_pixels = 50
+    observation_dim = Y.shape[1]
+    # Calculate X and Y limits for the plot
+    xlim_min, xlim_max = time_index[:, 0].min(), time_index[:, 0].max()
+    ylim_min, ylim_max = 0, 1
+    
+    # Sample from the model's predictive distribution
+    Fsamples = model.predict_f_samples(X, num_samples)
+    
+    # Transform samples using the likelihood parameters
+    # num_samples x time_index x observation_dim
+    alpha = model.likelihood.param1_transform(Fsamples[..., ::2])
+    beta = model.likelihood.param1_transform(Fsamples[..., 1::2])
+    
+    # Prepare line space for the Y-axis
+    line_space = np.linspace(ylim_min, ylim_max, num_y_pixels)
+    predictive_density = np.zeros((X.shape[0], num_y_pixels))
+    # Compute the predictive density for the specified task
+    # dist = model.likelihood.distribution_class(alpha[:, :, task], beta[:, :, task])
+    for i in range(num_samples):
+        for j in range(X.shape[0]):
+            dist = model.likelihood.distribution_class(
+                alpha[i, j , task],
+                beta[i, j, task],
+                force_probs_to_zero_outside_support=True,
+            )
+            predictive_density[j] += dist.prob(line_space).numpy()
+    predictive_density /= num_samples
+
+    
+    # Create a meshgrid for the contour plot
+    x_mesh, y_mesh = np.meshgrid(time_index, line_space)
+
+    fig, ax = plt.subplots(1, 1, figsize=(16, 8))
+    cs = ax.contourf(x_mesh, y_mesh, np.log10(predictive_density.T+1e-12))
+    ax.scatter(time_index, Y[:, task], color="k", s=10, label="Observaciones")
+
+    plt.colorbar(cs, ax=ax)
+    plt.tight_layout()
+    plt.savefig(path + f"/predictive_density_{task}.png")
+    plt.close()
+            
+
+
 def continuous_ranked_probability_score_gaussian(model: GPModel, X_test: tf.Tensor, Y_test: tf.Tensor) -> tf.Tensor:
     """
     continuous_ranked_probability_score
@@ -616,17 +685,24 @@ def chd_ind_model():
     print(f"CRPS: {crps}")
     print(f"MSE: {mse}")
     print(f"MAE: {mae}")
-
-    Y_mean, Y_var = model.predict_y(X_test)
-
     for task in range(observation_dim):
-        plot_confidence_interval(
-            y_mean=Y_mean[:, task],
-            y_var=Y_var[:, task],
-            task_name=f"task_{task}",
-            fname=path+f"/task_{task}",
-            y_true=Y_test[:, task]
+        plot_predict_log_density(
+            model,
+            X_test,
+            Y_test,
+            task=task,
+            path=path
         )
+    # Y_mean, Y_var = model.predict_y(X_test)
+
+    # for task in range(observation_dim):
+    # plot_confidence_interval(
+    # y_mean=Y_mean[:, task],
+    # y_var=Y_var[:, task],
+    # task_name=f"task_{task}",
+    # fname=path+f"/task_{task}",
+    # y_true=Y_test[:, task]
+    # )
 
 
 def chd_corr_model():
@@ -720,15 +796,15 @@ if __name__ == "__main__":
     ct_data = load_datasets()
     indexes = [2, 9, 11, 12, 13, 14, 16, 17, 19, 21, 3, 6, 0, 5, 7, 8, 10, 1, 4, 18, 22, 20, 15]
     ct_data = ct_data.iloc[:, indexes]
-    norm_data, data_mean, data_std = normalize_dataset(ct_data)
-    data_mean = data_mean.values
-    data_std = data_std.values
+    # norm_data, data_mean, data_std = normalize_dataset(ct_data)
+    # data_mean = data_mean.values
+    # data_std = data_std.values
     
-    # max_data = ct_data.max()
-    # norm_data = ct_data / max_data
-    # eps = 1e-3
-    # norm_data.fillna(eps, inplace=True)
-    # norm_data[norm_data <= 0] = eps
+    max_data = ct_data.max()
+    norm_data = ct_data / max_data
+    eps = 1e-3
+    norm_data.fillna(eps, inplace=True)
+    norm_data[norm_data <= 0] = eps
 
     # Create windows
     order = 1
@@ -752,4 +828,4 @@ if __name__ == "__main__":
     observation_dim = Y_train.shape[1]
     num_inducing = 64
 
-    chd_corr_model()
+    chd_ind_model()

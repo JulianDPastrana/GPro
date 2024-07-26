@@ -94,3 +94,4 @@ class MOChainedLikelihoodMC(MonteCarloLikelihood):
         param_2 = self.param2_transform(Fd2)
         dist = self.distribution_class(param_1, param_2)
         return dist.variance()
+
