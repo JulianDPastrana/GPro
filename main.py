@@ -11,6 +11,7 @@ from typing import Tuple, Optional
 from likelihoods import MOChainedLikelihoodMC
 import properscoring as ps
 import matplotlib.pyplot as plt
+import tikzplotlib as tikz
 
 def plot_predict_log_density(
     model,
@@ -370,6 +371,10 @@ def lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train):
         q_mu=q_mu,
         q_sqrt=q_sqrt
     )
+
+    for q in range(ind_process_dim):
+        gpf.utilities.set_trainable(model.kernel.kernels[q].variance, False)
+
  
     return model
 
@@ -505,10 +510,12 @@ def ind_model():
         )
 
 def lmc_model():
+    
     path = "./lmc_tests"
     filename = "/lmc_grid_Q"
     results_df = pd.DataFrame()
-    for q in range(observation_dim, 2*observation_dim + 1):
+    for q in range(1, 2*observation_dim + 1):
+        
         ind_process_dim = q
         model = lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train)
         model_name = f"/lmcgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}.pkl"
@@ -550,6 +557,17 @@ def lmc_model():
             with pd.ExcelWriter(path + filename + ".xlsx",
                             mode='w') as writer:
                 results_df.to_excel(writer)
+
+    df = pd.read_excel(path + filename + ".xlsx")
+    metrics = ["MSLL", "CRPS", "MSE", "NLPD"]
+
+    for metric in metrics:
+        plt.figure(figsize=(16, 8))
+        plt.plot(df["q"], df[metric], marker='o')
+        plt.xlabel("Number of Independent GPs (Q)")
+        plt.ylabel(f"{metric} Value")
+        plt.grid(True)
+        tikz.save(path + f"/{metric}_gs.tex")
 
 def lmcpre_model():
     path = "./lmc_tests/pretrained_models"
@@ -796,15 +814,16 @@ if __name__ == "__main__":
     ct_data = load_datasets()
     indexes = [2, 9, 11, 12, 13, 14, 16, 17, 19, 21, 3, 6, 0, 5, 7, 8, 10, 1, 4, 18, 22, 20, 15]
     ct_data = ct_data.iloc[:, indexes]
-    # norm_data, data_mean, data_std = normalize_dataset(ct_data)
-    # data_mean = data_mean.values
-    # data_std = data_std.values
     
-    max_data = ct_data.max()
-    norm_data = ct_data / max_data
-    eps = 1e-3
-    norm_data.fillna(eps, inplace=True)
-    norm_data[norm_data <= 0] = eps
+    norm_data, data_mean, data_std = normalize_dataset(ct_data)
+    data_mean = data_mean.values
+    data_std = data_std.values
+    
+    # max_data = ct_data.max()
+    # norm_data = ct_data / max_data
+    # eps = 1e-3
+    # norm_data.fillna(eps, inplace=True)
+    # norm_data[norm_data <= 0] = eps
 
     # Create windows
     order = 1
@@ -828,4 +847,5 @@ if __name__ == "__main__":
     observation_dim = Y_train.shape[1]
     num_inducing = 64
 
-    chd_ind_model()
+    lmc_model()
+
