@@ -509,24 +509,50 @@ def ind_model():
             y_true=Y_test[:, task]
         )
 
+def plot_lengthscales(model, ind_process_dim, path):
+    plt.figure(figsize=(16, 8))
+    lengthscale_matrix = np.empty(shape=(ind_process_dim, input_dim))
+    for q in range(ind_process_dim):
+        lengthscale_matrix[q] = model.kernel.kernels[q].lengthscales.numpy()
+
+    sns.heatmap(
+            lengthscale_matrix,
+            cbar=True,
+            cmap="viridis"
+            )
+
+    tikz.save(path + f"/lengthscale_matrix_{ind_process_dim}.tex")
+    plt.savefig(path + f"/lengthscale_matrix_{ind_process_dim}.png")
+    plt.close()
+
+
 def lmc_model():
     
     path = "./lmc_tests"
     filename = "/lmc_grid_Q"
     results_df = pd.DataFrame()
-    for q in range(1, 2*observation_dim + 1):
-        break 
+    for q in [17]:#in range(1, 2*observation_dim + 1):
         ind_process_dim = q
         model = lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train)
         model_name = f"/lmcgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}.pkl"
         
         dump_load_model(path, model_name, model)
-
+        plot_lengthscales(
+                model=model,
+                ind_process_dim=ind_process_dim,
+                path=path
+                )
         plt.figure(figsize=(16, 8))
-        sns.heatmap(model.kernel.W.numpy(), annot=True, fmt=".2f")
+        sns.heatmap(
+                np.abs(model.kernel.W.numpy()),
+                cbar=True,
+                cmap="viridis"
+                )
+        tikz.save(path + f"/coregionalization_{ind_process_dim}.tex")
         plt.savefig(path + f"/coregionalization_{ind_process_dim}.png")
         plt.close()
-
+       
+        """""
         nlpd = negative_log_predictive_density(model, X_test, Y_test)
         msll = mean_standardized_log_loss(model, X_test, Y_test, Y_train)
         crps = continuous_ranked_probability_score_gaussian(model, X_test, Y_test)
@@ -561,6 +587,7 @@ def lmc_model():
         tikz.save(path + f"/{metric}_gs.tex")
         plt.savefig(path + f"/{metric}_gs.png")
         plt.close()
+    """""
 
 def lmcpre_model():
     path = "./lmc_tests/pretrained_models"
