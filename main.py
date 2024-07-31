@@ -348,7 +348,7 @@ def lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train):
         gpf.kernels.SquaredExponential(
             lengthscales=np.random.uniform(0.01, np.log(input_dim)*np.sqrt(input_dim), size=input_dim)) for _ in range(ind_process_dim)
         ]
-    W = np.random.randn(observation_dim, ind_process_dim) #+ np.eye(observation_dim, ind_process_dim)
+    W = np.random.randn(observation_dim, ind_process_dim) * 0.1 #+ np.eye(observation_dim, ind_process_dim)
     kernel = gpf.kernels.LinearCoregionalization(
         kern_list, W=W
     )
@@ -515,21 +515,12 @@ def lmc_model():
     filename = "/lmc_grid_Q"
     results_df = pd.DataFrame()
     for q in range(1, 2*observation_dim + 1):
-        
+        break 
         ind_process_dim = q
         model = lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train)
         model_name = f"/lmcgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}.pkl"
-
-        train_model(model, data=train_data)
-
-        with open(path + model_name, 'wb') as handle:
-            pickle.dump(gpf.utilities.parameter_dict(model), handle)
-        print("Model trained and parameters saved successfully.")
-
-        with open(path + model_name, 'rb') as file:
-            params = pickle.load(file)
-        gpf.utilities.multiple_assign(model, params)
-        print("Model parameters loaded successfully.")
+        
+        dump_load_model(path, model_name, model)
 
         plt.figure(figsize=(16, 8))
         sns.heatmap(model.kernel.W.numpy(), annot=True, fmt=".2f")
@@ -568,6 +559,8 @@ def lmc_model():
         plt.ylabel(f"{metric} Value")
         plt.grid(True)
         tikz.save(path + f"/{metric}_gs.tex")
+        plt.savefig(path + f"/{metric}_gs.png")
+        plt.close()
 
 def lmcpre_model():
     path = "./lmc_tests/pretrained_models"
