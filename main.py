@@ -460,7 +460,8 @@ def chd_ind_gp(input_dim, latent_dim, observation_dim, num_inducing, X_train):
 def dump_load_model(
         path,
         model_name,
-        model
+        model,
+        train_data
 ):
 
     try:
@@ -509,7 +510,7 @@ def ind_model():
             y_true=Y_test[:, task]
         )
 
-def plot_lengthscales(model, ind_process_dim, path):
+def plot_lengthscales(model, ind_process_dim, path, filename):
     plt.figure(figsize=(16, 8))
     lengthscale_matrix = np.empty(shape=(ind_process_dim, input_dim))
     for q in range(ind_process_dim):
@@ -521,8 +522,8 @@ def plot_lengthscales(model, ind_process_dim, path):
             cmap="viridis"
             )
 
-    tikz.save(path + f"/lengthscale_matrix_{ind_process_dim}.tex")
-    plt.savefig(path + f"/lengthscale_matrix_{ind_process_dim}.png")
+    tikz.save(path + filename + ".tex")
+    plt.savefig(path + filename + ".png")
     plt.close()
 
 
@@ -823,7 +824,88 @@ def chd_corr_model():
 
 
 
-if __name__ == "__main__": 
+def train_lmc_by_horizon():
+
+    path = "./lmc_tests/across_horizons/"
+    filename = "/lmc_grid_H" 
+    results_df = pd.DataFrame()
+    np.random.seed(1966)
+    tf.random.set_seed(1966)
+    tf.keras.mixed_precision.set_global_policy('mixed_bfloat16')
+
+    ct_data = load_datasets()
+    indexes = [2, 9, 11, 12, 13, 14, 16, 17, 19, 21, 3, 6, 0, 5, 7, 8, 10, 1, 4, 18, 22, 20, 15]
+    ct_data = ct_data.iloc[:, indexes]
+
+    norm_data, data_mean, data_std = normalize_dataset(ct_data)
+    
+    horizon_list = [30]
+    for horizon in horizon_list: 
+        order = 1
+        input_width = order
+        label_width = 1
+        shift = horizon
+        window = WindowGenerator(
+            input_width,
+            label_width,
+            shift,
+            norm_data.columns
+        )
+        x, y = window.make_dataset(norm_data)
+        N = len(x)
+        X_train, Y_train = x[0:int(N * 0.9)], y[0:int(N * 0.9)]
+        X_test, Y_test = x[int(N * 0.9):], y[int(N * 0.9):]
+        train_data = (X_test, Y_test)
+        
+        global input_dim
+
+        _, input_dim = X_train.shape
+        observation_dim = Y_train.shape[1]
+        num_inducing = 64
+        ind_process_dim = 17
+        model = lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train)
+        model_name = f"/lmcgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}_H{horizon}.pkl"
+        
+        dump_load_model(path, model_name, model, train_data)
+        plot_lengthscales(
+                model=model,
+                ind_process_dim=ind_process_dim,
+                path=path,
+                filename=f"/lengthscale_matrix_{horizon}",
+                )
+        plt.figure(figsize=(16, 8))
+        sns.heatmap(
+                np.abs(model.kernel.W.numpy()),
+                cbar=True,
+                cmap="viridis"
+                )
+        tikz.save(path + f"/coregionalization_{horizon}.tex")
+        plt.savefig(path + f"/coregionalization_{horizon}.png")
+        plt.close()
+
+        nlpd = negative_log_predictive_density(model, X_test, Y_test)
+        msll = mean_standardized_log_loss(model, X_test, Y_test, Y_train)
+        crps = continuous_ranked_probability_score_gaussian(model, X_test, Y_test)
+        mse = mean_squared_error(model, X_test, Y_test)
+        mae = mean_absolute_error(model, X_test, Y_test)
+
+        results_df.loc[horizon, "NLPD"] = nlpd.numpy()
+        results_df.loc[horizon, "MSLL"] = msll
+        results_df.loc[horizon, "CRPS"] = crps
+        results_df.loc[horizon, "MSE"] = mse.numpy()
+        results_df.loc[horizon, "MAE"] = mae.numpy()
+
+       # Save results to Excel file
+        try:
+            with pd.ExcelWriter(path + filename + ".xlsx",
+                            mode='a', if_sheet_exists="replace") as writer:
+                results_df.to_excel(writer)
+        except FileNotFoundError:
+            with pd.ExcelWriter(path + filename + ".xlsx",
+                            mode='w') as writer:
+                results_df.to_excel(writer)
+
+def main():
 
     # Set seed for NumPy
     np.random.seed(1966)
@@ -868,4 +950,8 @@ if __name__ == "__main__":
     num_inducing = 64
 
     lmc_model()
+
+if __name__ == "__main__":
+    train_lmc_by_horizon()
+    # main()
 
