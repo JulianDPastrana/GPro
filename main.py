@@ -519,7 +519,9 @@ def plot_lengthscales(model, ind_process_dim, path, filename):
     sns.heatmap(
             lengthscale_matrix,
             cbar=True,
-            cmap="viridis"
+            cmap="viridis",
+            vmin=10,
+            vmax=40,
             )
 
     tikz.save(path + filename + ".tex")
@@ -839,7 +841,7 @@ def train_lmc_by_horizon():
 
     norm_data, data_mean, data_std = normalize_dataset(ct_data)
     
-    horizon_list = [30]
+    horizon_list = [1, 2, 3, 4, 5, 6, 7, 14, 21, 30]
     for horizon in horizon_list: 
         order = 1
         input_width = order
@@ -877,7 +879,9 @@ def train_lmc_by_horizon():
         sns.heatmap(
                 np.abs(model.kernel.W.numpy()),
                 cbar=True,
-                cmap="viridis"
+                cmap="viridis",
+                vmin=0,
+                vmax=1.5
                 )
         tikz.save(path + f"/coregionalization_{horizon}.tex")
         plt.savefig(path + f"/coregionalization_{horizon}.png")
