@@ -841,7 +841,7 @@ def train_lmc_by_horizon():
 
     norm_data, data_mean, data_std = normalize_dataset(ct_data)
     
-    horizon_list = [1, 2, 3, 4, 5, 6, 7, 14, 21, 30]
+    horizon_list = [6] # [1, 2, 3, 4, 5, 6, 7, 14, 21, 30]
     for horizon in horizon_list: 
         order = 1
         input_width = order
@@ -867,25 +867,28 @@ def train_lmc_by_horizon():
         ind_process_dim = 17
         model = lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train)
         model_name = f"/lmcgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}_H{horizon}.pkl"
-        
+        # model = ind_gp(input_dim, observation_dim, num_inducing, X_train)
+        # model_name = f"/indgp_Normal_T{order}_M{num_inducing}_H{horizon}.pkl"
+        # model_name = f"/igp_T{order}_M{num_inducing}_H{horizon}.pkl" 
+       
         dump_load_model(path, model_name, model, train_data)
-        plot_lengthscales(
-                model=model,
-                ind_process_dim=ind_process_dim,
-                path=path,
-                filename=f"/lengthscale_matrix_{horizon}",
-                )
-        plt.figure(figsize=(16, 8))
-        sns.heatmap(
-                np.abs(model.kernel.W.numpy()),
-                cbar=True,
-                cmap="viridis",
-                vmin=0,
-                vmax=1.5
-                )
-        tikz.save(path + f"/coregionalization_{horizon}.tex")
-        plt.savefig(path + f"/coregionalization_{horizon}.png")
-        plt.close()
+        # plot_lengthscales(
+                # model=model,
+                # ind_process_dim=ind_process_dim,
+                # path=path,
+                # filename=f"/lengthscale_matrix_{horizon}",
+                # )
+        # plt.figure(figsize=(16, 8))
+        # sns.heatmap(
+                # np.abs(model.kernel.W.numpy()),
+                # cbar=True,
+                # cmap="viridis",
+                # vmin=0,
+                # vmax=1.5
+                # )
+        # tikz.save(path + f"/coregionalization_{horizon}.tex")
+        # plt.savefig(path + f"/coregionalization_{horizon}.png")
+        # plt.close()
 
         nlpd = negative_log_predictive_density(model, X_test, Y_test)
         msll = mean_standardized_log_loss(model, X_test, Y_test, Y_train)
@@ -908,6 +911,80 @@ def train_lmc_by_horizon():
             with pd.ExcelWriter(path + filename + ".xlsx",
                             mode='w') as writer:
                 results_df.to_excel(writer)
+
+
+def plot_lmc_performance_bars():
+    file_path = "./lmc_tests/lmc_vs_idp.xlsx"
+    file_save = "./lmc_tests/performance_bars"
+    xl = pd.ExcelFile(file_path)
+
+    # Load each sheet into a DataFrame
+    nlpd_df = xl.parse('NLPD')
+    msll_df = xl.parse('MSLL')
+
+    # Function to plot data
+    def plot_data(df, metric_name):
+        # Set the position of the bars on the x-axis
+        barWidth = 0.25
+        r1 = range(len(df))
+        r2 = [x + barWidth for x in r1]
+        r3 = [x + barWidth for x in r2]
+    
+        # Create the bar plot
+        plt.figure(figsize=(16, 8))
+        plt.bar(r1, df['IGP'], color='b', width=barWidth, edgecolor='grey', label='IGP')
+        plt.bar(r2, df['IGP+'], color='g', width=barWidth, edgecolor='grey', label='IGP+')
+        plt.bar(r3, df['LMCGP'], color='r', width=barWidth, edgecolor='grey', label='LMCGP')
+    
+        # Add labels
+        plt.xlabel('H', fontweight='bold')
+        plt.xticks([r + barWidth for r in range(len(df))], df['H'])
+        plt.ylabel(metric_name, fontweight='bold')
+        plt.title(f'{metric_name} for different H values')
+        plt.savefig(file_save + f"_{metric_name}.png")
+        tikz.save(file_save + f"_{metric_name}.tex")
+        plt.close()
+
+    # Plot NLPD data
+    plot_data(nlpd_df, 'NLPD')
+    # Plot MSLL data
+    plot_data(msll_df, 'MSLL')
+
+
+def plot_forecasting():
+    path = './lmc_tests/'
+    ind_process_dim = 17
+    model = lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train)
+    model_name = f"/lmcgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}_H1.pkl"
+    dump_load_model(path + "across_horizons", model_name, model, train_data) 
+    y_mean, y_var = model.predict_y(X_test)
+
+    for task in range(observation_dim):
+        output_name = norm_data.columns[task]
+        y_lower = y_mean[:, task] - 1.96 * np.sqrt(y_var[:, task])
+        y_upper = y_mean[:, task] + 1.96 * np.sqrt(y_var[:, task])
+        time_range = range(len(X_test))
+        fig, ax = plt.subplots(figsize=(16, 8))
+        ax.plot(time_range, Y_test[:, task], 'r.-')
+        ax.plot(time_range, y_mean[:, task], 'b.-')
+        ax.fill_between(
+                time_range,
+                y_lower,
+                y_upper,
+                alpha=0.5,
+                color='b'
+                )
+
+        ax.set_title(
+                f'Task {output_name}'
+                )
+        ax.set_xmargin(0.01),
+        plt.savefig(path + f"lmc_forecasting_{output_name}.png")
+        tikz.save(path + f"lmc_forecasting_{output_name}.tex")
+        plt.close()
+
+
+
 
 def main():
 
@@ -953,9 +1030,55 @@ def main():
     observation_dim = Y_train.shape[1]
     num_inducing = 64
 
-    lmc_model()
+    # lmc_model()
+    plot_forecasting()
 
 if __name__ == "__main__":
-    train_lmc_by_horizon()
+    # plot_lmc_performance_bars()
+    # train_lmc_by_horizon()
     # main()
+    # Set seed for NumPy
+    np.random.seed(1966)
+    # Set seed for GPflow
+    tf.random.set_seed(1966)
+    tf.keras.mixed_precision.set_global_policy('mixed_bfloat16')
+
+    ct_data = load_datasets()
+    indexes = [2, 9, 11, 12, 13, 14, 16, 17, 19, 21, 3, 6, 0, 5, 7, 8, 10, 1, 4, 18, 22, 20, 15]
+    ct_data = ct_data.iloc[:, indexes]
+    
+    norm_data, data_mean, data_std = normalize_dataset(ct_data)
+    data_mean = data_mean.values
+    data_std = data_std.values
+    
+    # max_data = ct_data.max()
+    # norm_data = ct_data / max_data
+    # eps = 1e-3
+    # norm_data.fillna(eps, inplace=True)
+    # norm_data[norm_data <= 0] = eps
+
+    # Create windows
+    order = 1
+    input_width = order
+    label_width = 1
+    shift = 1
+    window = WindowGenerator(
+        input_width,
+        label_width,
+        shift,
+        norm_data.columns
+    )
+    print(window)
+    x, y = window.make_dataset(norm_data)
+    N = len(x)
+    X_train, Y_train = x[0:int(N * 0.9)], y[0:int(N * 0.9)]
+    X_test, Y_test = x[int(N * 0.9):], y[int(N * 0.9):]
+    train_data = (X_test, Y_test)
+
+    _, input_dim = X_train.shape
+    observation_dim = Y_train.shape[1]
+    num_inducing = 64
+
+    # lmc_model()
+    plot_forecasting()
 
