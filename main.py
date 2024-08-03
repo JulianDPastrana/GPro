@@ -12,6 +12,8 @@ from likelihoods import MOChainedLikelihoodMC
 import properscoring as ps
 import matplotlib.pyplot as plt
 import tikzplotlib as tikz
+from tqdm import tqdm
+
 
 def plot_predict_log_density(
     model,
@@ -162,9 +164,7 @@ def mean_absolute_error(model: GPModel, X_test: tf.Tensor, Y_test: tf.Tensor) ->
     mae = tf.reduce_mean(tf.math.abs(Y_test - Y_mean))
     return mae
 
-
-
-def train_model(model, data: Tuple[tf.Tensor, tf.Tensor], epochs: int = 5000, patience: int = 150) -> None:
+def train_model(model, data: Tuple[tf.Tensor, tf.Tensor], batch_size: int = 64, epochs: int = 1000, patience: int = 150) -> None:
     """
     Trains the GP model using minibatch optimization with verbose logging and early stopping based on training loss.
     Restores the model to the best state observed during training.
@@ -176,6 +176,80 @@ def train_model(model, data: Tuple[tf.Tensor, tf.Tensor], epochs: int = 5000, pa
         epochs (int): The number of epochs for training. Defaults to 100.
         patience (int): The number of epochs to wait for an improvement in training loss before stopping early. Defaults to 3.
     """
+    X, Y = data
+
+    # Create the dataset and batch it
+    dataset = tf.data.Dataset.from_tensor_slices((X, Y))
+    dataset = dataset.shuffle(buffer_size=len(X)).batch(batch_size)
+
+    gpf.utilities.set_trainable(model.q_mu, False)
+    gpf.utilities.set_trainable(model.q_sqrt, False)
+
+    variational_vars = [(model.q_mu, model.q_sqrt)]
+    natgrad_opt = gpf.optimizers.NaturalGradient(gamma=0.01)
+    # print(natgrad_opt.xi_transform)
+    # assert 0==1
+
+    adam_vars = model.trainable_variables
+    adam_opt = tf.optimizers.Adam(0.01)
+    
+
+    @tf.function
+    def optimization_step(batch_X: tf.Tensor, batch_Y: tf.Tensor) -> tf.Tensor:
+        with tf.GradientTape() as tape:
+            loss = model.training_loss_closure((batch_X, batch_Y))
+        adam_opt.minimize(loss, adam_vars)
+        natgrad_opt.minimize(loss, variational_vars)
+
+        return loss()
+
+    # Early stopping variables
+    best_train_loss = np.inf
+    epochs_without_improvement = 0
+    # best_parameters = gpf.utilities.parameter_dict(model)
+
+    for epoch in range(1, epochs + 1):
+        epoch_loss = 0.0
+        num_batches = 0
+        with tqdm(total=len(X) // batch_size, desc=f"Epoch {epoch}/{epochs}", unit="batch") as pbar:
+            for batch_X, batch_Y in dataset:
+                loss = optimization_step(batch_X, batch_Y)
+                epoch_loss += loss
+                num_batches += 1
+                pbar.set_postfix_str(s=f"loss: {epoch_loss / num_batches:.4e}", refresh=True)
+                pbar.update(1)
+
+        # Calculate average training loss for the epoch
+        avg_epoch_loss = epoch_loss / num_batches
+
+        # Check for improvement
+        if avg_epoch_loss < best_train_loss:
+            best_train_loss = avg_epoch_loss
+            epochs_without_improvement = 0
+            best_epoch = epoch
+            # Save the best parameters
+            # best_parameters = gpf.utilities.parameter_dict(model)
+            log_dir = "./checkpoints"
+            ckpt = tf.train.Checkpoint(model=model)
+            manager = tf.train.CheckpointManager(ckpt, log_dir, max_to_keep=3)
+            manager.save()
+        else:
+            epochs_without_improvement += 1
+
+        # Print training loss
+        # print(f"Epoch {epoch}: Training loss: {avg_epoch_loss:.4e}")
+
+        # Early stopping check
+        if epochs_without_improvement >= patience:
+            print(f"Early stopping at epoch {epoch}. Best training loss: {best_train_loss:.4e} at epoch {best_epoch}")
+            # gpf.utilities.multiple_assign(model, best_parameters)
+            ckpt.restore(manager.latest_checkpoint)
+
+            break
+        
+    ckpt.restore(manager.latest_checkpoint)
+""""
+def train_model(model, data: Tuple[tf.Tensor, tf.Tensor], epochs: int = 5000, patience: int = 150) -> None:
     X, Y = data
 
     loss_fn = model.training_loss_closure(data)
@@ -237,7 +311,7 @@ def train_model(model, data: Tuple[tf.Tensor, tf.Tensor], epochs: int = 5000, pa
             break
             
     ckpt.restore(manager.latest_checkpoint)
-
+"""""
 def load_datasets():
     dataset = pd.read_excel(
         io='./Ejercicio hidrología v2.xlsx',
@@ -520,8 +594,8 @@ def plot_lengthscales(model, ind_process_dim, path, filename):
             lengthscale_matrix,
             cbar=True,
             cmap="viridis",
-            vmin=10,
-            vmax=40,
+            # vmin=10,
+            # vmax=40,
             )
 
     tikz.save(path + filename + ".tex")
@@ -534,16 +608,17 @@ def lmc_model():
     path = "./lmc_tests"
     filename = "/lmc_grid_Q"
     results_df = pd.DataFrame()
-    for q in [17]:#in range(1, 2*observation_dim + 1):
+    for q in range(1, 2*observation_dim + 1):
         ind_process_dim = q
         model = lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train)
         model_name = f"/lmcgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}.pkl"
         
-        dump_load_model(path, model_name, model)
+        dump_load_model(path, model_name, model, train_data)
         plot_lengthscales(
                 model=model,
                 ind_process_dim=ind_process_dim,
-                path=path
+                path=path,
+                filename=f"/lengthscale_matrix_Q{ind_process_dim}"
                 )
         plt.figure(figsize=(16, 8))
         sns.heatmap(
@@ -555,7 +630,6 @@ def lmc_model():
         plt.savefig(path + f"/coregionalization_{ind_process_dim}.png")
         plt.close()
        
-        """""
         nlpd = negative_log_predictive_density(model, X_test, Y_test)
         msll = mean_standardized_log_loss(model, X_test, Y_test, Y_train)
         crps = continuous_ranked_probability_score_gaussian(model, X_test, Y_test)
@@ -590,7 +664,6 @@ def lmc_model():
         tikz.save(path + f"/{metric}_gs.tex")
         plt.savefig(path + f"/{metric}_gs.png")
         plt.close()
-    """""
 
 def lmcpre_model():
     path = "./lmc_tests/pretrained_models"
@@ -826,10 +899,10 @@ def chd_corr_model():
 
 
 
-def train_lmc_by_horizon():
+def train_gp_by_horizon():
 
-    path = "./lmc_tests/across_horizons/"
-    filename = "/lmc_grid_H" 
+    path = "./ind_tests/across_horizons/"
+    filename = "/ind_grid_H" 
     results_df = pd.DataFrame()
     np.random.seed(1966)
     tf.random.set_seed(1966)
@@ -841,7 +914,7 @@ def train_lmc_by_horizon():
 
     norm_data, data_mean, data_std = normalize_dataset(ct_data)
     
-    horizon_list = [6] # [1, 2, 3, 4, 5, 6, 7, 14, 21, 30]
+    horizon_list = [1, 2, 3, 4, 5, 6, 7, 14, 21, 30]
     for horizon in horizon_list: 
         order = 1
         input_width = order
@@ -857,7 +930,7 @@ def train_lmc_by_horizon():
         N = len(x)
         X_train, Y_train = x[0:int(N * 0.9)], y[0:int(N * 0.9)]
         X_test, Y_test = x[int(N * 0.9):], y[int(N * 0.9):]
-        train_data = (X_test, Y_test)
+        train_data = (X_train, Y_train)
         
         global input_dim
 
@@ -865,10 +938,10 @@ def train_lmc_by_horizon():
         observation_dim = Y_train.shape[1]
         num_inducing = 64
         ind_process_dim = 17
-        model = lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train)
-        model_name = f"/lmcgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}_H{horizon}.pkl"
-        # model = ind_gp(input_dim, observation_dim, num_inducing, X_train)
-        # model_name = f"/indgp_Normal_T{order}_M{num_inducing}_H{horizon}.pkl"
+        # model = lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train)
+        # model_name = f"/lmcgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}_H{horizon}.pkl"
+        model = ind_gp(input_dim, observation_dim, num_inducing, X_train)
+        model_name = f"/indgp_Normal_T{order}_M{num_inducing}_H{horizon}.pkl"
         # model_name = f"/igp_T{order}_M{num_inducing}_H{horizon}.pkl" 
        
         dump_load_model(path, model_name, model, train_data)
@@ -1024,7 +1097,7 @@ def main():
     N = len(x)
     X_train, Y_train = x[0:int(N * 0.9)], y[0:int(N * 0.9)]
     X_test, Y_test = x[int(N * 0.9):], y[int(N * 0.9):]
-    train_data = (X_test, Y_test)
+    # train_data = (X_test, Y_test)
 
     _, input_dim = X_train.shape
     observation_dim = Y_train.shape[1]
@@ -1073,12 +1146,14 @@ if __name__ == "__main__":
     N = len(x)
     X_train, Y_train = x[0:int(N * 0.9)], y[0:int(N * 0.9)]
     X_test, Y_test = x[int(N * 0.9):], y[int(N * 0.9):]
-    train_data = (X_test, Y_test)
+    print(f"Train shape: {len(Y_train)}, Test shape: {len(Y_test)}")
+    train_data = (X_train, Y_train)
 
     _, input_dim = X_train.shape
     observation_dim = Y_train.shape[1]
     num_inducing = 64
 
     # lmc_model()
-    plot_forecasting()
+    # plot_forecasting()
+    train_gp_by_horizon()
 
