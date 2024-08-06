@@ -265,55 +265,87 @@ def normalize_dataset(dataframe: pd.DataFrame) -> tuple:
     return norm_dataset, mean, std
 
 
-def plot_confidence_interval(
-    y_mean: np.ndarray, 
-    y_var: np.ndarray, 
-    task_name: str, 
-    fname: Optional[str] = None, 
-    y_true: Optional[np.ndarray] = None
-) -> None:
-    """
-    Plot the predictive mean and confidence intervals for a given task.
+def plot_confidence_interval():
+    # Set seed for NumPy
+    np.random.seed(1966)
+    # Set seed for GPflow
+    tf.random.set_seed(1966)
+    tf.keras.mixed_precision.set_global_policy('mixed_bfloat16')
 
-    Parameters:
-        y_mean (np.ndarray): The predictive mean values.
-        y_var (np.ndarray): The predictive variance values.
-        task_name (str): The name of the task for labeling the plot.
-        fname (Optional[str]): The filename to save the plot. If None, the plot is displayed.
-        y_true (Optional[np.ndarray]): The true values to be plotted for comparison. If None, they are not plotted.
+    ct_data = load_datasets()
+    indexes = [2, 9, 11, 12, 13, 14, 16, 17, 19, 21, 3, 6, 0, 5, 7, 8, 10, 1, 4, 18, 22, 20, 15]
+    ct_data = ct_data.iloc[:, indexes]
+    
+    norm_data, data_mean, data_std = normalize_dataset(ct_data)
+    data_mean = data_mean.values
+    data_std = data_std.values
+    
+    # max_data = ct_data.max()
+    # norm_data = ct_data / max_data
+    # eps = 1e-3
+    # norm_data.fillna(eps, inplace=True)
+    # norm_data[norm_data <= 0] = eps
 
-    Returns:
-        None
-    """
-    plt.figure(figsize=(16, 8))
-    time_range = range(len(y_mean))
+    # Create windows
+    order = 1
+    input_width = order
+    label_width = 1
+    shift = 1
+    window = WindowGenerator(
+        input_width,
+        label_width,
+        shift,
+        norm_data.columns
+    )
+    print(window)
+    x, y = window.make_dataset(norm_data)
+    N = len(x)
+    X_train, Y_train = x[0:int(N * 0.9)], y[0:int(N * 0.9)]
+    X_test, Y_test = x[int(N * 0.9):], y[int(N * 0.9):]
+    train_data = (X_test, Y_test)
 
-    # Plot the confidence intervals
-    lb = y_mean - 2 * np.sqrt(y_var)
-    ub = y_mean + 2 * np.sqrt(y_var)
-    plt.fill_between(time_range, lb, ub, color="b", alpha=0.5, label=f'2 $\sigma$ interval')
+    _, input_dim = X_train.shape
+    observation_dim = Y_train.shape[1]
+    num_inducing = 64
 
-    # Plot the predictive mean
-    plt.plot(time_range, y_mean, ".b-", label="Predictive Mean")
+    path = "./lmc_tests"
+    filename = "/lmc_grid_Q"
+    results_df = pd.DataFrame()
+    ind_process_dim = 17
+    model = lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train)
+    model_name = f"/lmcgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}.pkl"    
+    dump_load_model(path, model_name, model, train_data)
+    y_mean, y_var = model.predict_y(X_test)
 
-    # Plot the true values if provided
-    if y_true is not None:
-        plt.plot(time_range, y_true, 'r.-', label="True Values")
+    y_mean = data_std * y_mean + data_mean
+    y_var = data_std ** 2 * y_var
+    
+    Y_test = data_std * Y_test + data_mean
 
-    # Add title and labels
-    plt.title(f"Output {task_name}")
-    plt.xlabel("Time")
-    plt.ylabel("Value")
-    plt.legend()
+    for task in range(observation_dim):
+        output_name = norm_data.columns[task]
+        y_lower = y_mean[:, task] - 1.96 * np.sqrt(y_var[:, task])
+        y_upper = y_mean[:, task] + 1.96 * np.sqrt(y_var[:, task])
 
-    # Save or show the plot
-    if fname:
-        plt.savefig(fname)
-    else:
-        plt.show()
+        # print(np.sqrt(model_ind.kernel.kernels[task].variance))
+        time_range = range(len(Y_test))
+        fig, ax = plt.subplots(figsize=(15, 8))
+        ax.plot(time_range, Y_test[:, task], 'r.-')
+        ax.plot(time_range, y_mean[:, task], 'b.-')
 
-    # Close the plot to free resources
-    plt.close()
+        # Shade in confidence
+        ax.fill_between(time_range,
+                        y_lower,
+                        y_upper,
+                        alpha=0.5,
+                        color='b')
+        # Shade in confidence
+        ax.set_title(
+            f'Task {output_name}')
+        ax.set_xmargin(0.01)
+        plt.savefig(path + f"/lmc_forecasting_{output_name}.png")
+        tikz.save(path + f"/lmc_forecasting_{output_name}.tex")
+        plt.close()
 
 
 def ind_gp(input_dim, observation_dim, num_inducing, X_train):
@@ -793,7 +825,6 @@ def chd_corr_model():
     ind_process_dim = 5
     model = chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train)
     model_name = f"/chdgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}_Normal.pkl"
-
     with open(f"chd_tests"+model_name, 'rb') as file:
          params_ind = pickle.load(file)
     gpf.utilities.multiple_assign(model, params_ind)
@@ -956,6 +987,7 @@ def main():
     lmc_model()
 
 if __name__ == "__main__":
-    train_lmc_by_horizon()
+    # train_lmc_by_horizon()
     # main()
+    plot_confidence_interval()
 
