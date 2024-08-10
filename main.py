@@ -1,3 +1,4 @@
+#!/home/jumsow/Documents/virtual_environments/gpvenv/bin/python3 
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -118,7 +119,7 @@ def negative_log_predictive_density(model: GPModel, X_test: tf.Tensor, Y_test: t
 
     Args:
         model (GPModel): The GPflow model.
-        X_test (tf.Tensor): The input test data.
+        X_test (tf.Tensor): The input test data. 
         Y_test (tf.Tensor): The true output test data.
 
     Returns:
@@ -164,7 +165,7 @@ def mean_absolute_error(model: GPModel, X_test: tf.Tensor, Y_test: tf.Tensor) ->
 
 
 
-def train_model(model, data: Tuple[tf.Tensor, tf.Tensor], epochs: int = 5000, patience: int = 150) -> None:
+def train_model(model, data: Tuple[tf.Tensor, tf.Tensor], epochs: int = 1500, patience: int = 150) -> None:
     """
     Trains the GP model using minibatch optimization with verbose logging and early stopping based on training loss.
     Restores the model to the best state observed during training.
@@ -184,7 +185,7 @@ def train_model(model, data: Tuple[tf.Tensor, tf.Tensor], epochs: int = 5000, pa
     gpf.utilities.set_trainable(model.q_sqrt, False)
 
     variational_vars = [(model.q_mu, model.q_sqrt)]
-    natgrad_opt = gpf.optimizers.NaturalGradient(gamma=0.1)
+    natgrad_opt = gpf.optimizers.NaturalGradient(gamma=0.01)
     # print(natgrad_opt.xi_transform)
     # assert 0==1
 
@@ -380,7 +381,7 @@ def lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train):
         gpf.kernels.SquaredExponential(
             lengthscales=np.random.uniform(0.01, np.log(input_dim)*np.sqrt(input_dim), size=input_dim)) for _ in range(ind_process_dim)
         ]
-    W = np.random.randn(observation_dim, ind_process_dim) * 0.1 #+ np.eye(observation_dim, ind_process_dim)
+    W = np.random.randn(observation_dim, ind_process_dim) * 0.01 #+ np.eye(observation_dim, ind_process_dim)
     kernel = gpf.kernels.LinearCoregionalization(
         kern_list, W=W
     )
@@ -392,7 +393,7 @@ def lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train):
 
     
     q_mu = np.zeros((num_inducing, ind_process_dim))
-    q_sqrt = np.repeat(np.eye(num_inducing)[None, ...], ind_process_dim, axis=0) * 1.0
+    q_sqrt = np.repeat(np.eye(num_inducing)[None, ...], ind_process_dim, axis=0) * 0.1
     
     likelihood = gpf.likelihoods.Gaussian(variance=np.ones(shape=observation_dim))
 
@@ -422,7 +423,7 @@ def chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_indu
     # * 0.01 * np.log(latent_dim)*np.sqrt(ind_process_dim)
     # W = np.random.uniform(0.01, np.log(latent_dim)*np.sqrt(ind_process_dim), size=(latent_dim, ind_process_dim))
     
-    W = np.random.randn(latent_dim, ind_process_dim) * 0.1 / 2
+    W = np.random.randn(latent_dim, ind_process_dim) * 0.01
 
     kernel = gpf.kernels.LinearCoregionalization(
         kern_list, W=W
@@ -435,7 +436,7 @@ def chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_indu
 
 
     q_mu = np.zeros((num_inducing, ind_process_dim))
-    q_sqrt = np.repeat(np.eye(num_inducing)[None, ...], ind_process_dim, axis=0) * 1.0
+    q_sqrt = np.repeat(np.eye(num_inducing)[None, ...], ind_process_dim, axis=0) * 0.1
     
     likelihood = MOChainedLikelihoodMC(
             input_dim=input_dim,
@@ -624,167 +625,15 @@ def lmc_model():
         plt.close()
     """""
 
-def lmcpre_model():
-    path = "./lmc_tests/pretrained_models"
-    model_w = lmc_gp(input_dim, observation_dim, observation_dim, num_inducing, X_train)
-
-    model_name_w = f"/lmcgp_Normal_T{order}_Q{observation_dim}_M{num_inducing}_pretrained.pkl"
-    with open(f"ind_tests/indgp_Normal_T{order}_M{num_inducing}.pkl", 'rb') as file:
-        params_ind = pickle.load(file)
-    gpf.utilities.multiple_assign(model_w, params_ind)
-
-    model_w.kernel.W.assign(np.eye(observation_dim, observation_dim))
-
-    gpf.utilities.set_trainable(model_w, False)
-    gpf.utilities.set_trainable(model_w.kernel.W, True)
-    train_model(model_w, data=train_data)
-    gpf.utilities.set_trainable(model_w, False)
-    gpf.utilities.set_trainable(model_w.likelihood, True)
-    train_model(model_w, data=train_data)
-
-    with open(path + model_name_w, 'wb') as handle:
-        pickle.dump(gpf.utilities.parameter_dict(model_w), handle)
-    print("Model trained and parameters saved successfully.")
-
-    with open(path + model_name_w, 'rb') as file:
-        params = pickle.load(file)
-    gpf.utilities.multiple_assign(model_w, params)
-    print("Model parameters loaded successfully.")
-
-    nlpd = negative_log_predictive_density(model_w, X_test, Y_test)
-    msll = mean_standardized_log_loss(model_w, X_test, Y_test, Y_train)
-    crps = continuous_ranked_probability_score_gaussian(model_w, X_test, Y_test)
-    mse = mean_squared_error(model_w, X_test, Y_test)
-    mae = mean_absolute_error(model_w, X_test, Y_test)
-
-    print(f"NLPD: {nlpd}")
-    print(f"MSLL: {msll}")
-    print(f"CRPS: {crps}")
-    print(f"MSE: {mse}")
-    print(f"MAE: {mae}")
-
-    
-    W = model_w.kernel.W.numpy()
-    rq = np.sum(W**2, axis=0)
-
-    sort_idx = np.argsort(rq)[::-1]
-
-    numbers = np.arange(observation_dim)
-    plt.bar(numbers, rq[sort_idx])
-    plt.xticks(ticks=numbers, labels=numbers[sort_idx])
-    plt.savefig(path + "/relevance.png")
-
-    W_sort = W[:, sort_idx]
-    X_train_sort = X_train[:, sort_idx]
-    X_test_sort = X_test[:, sort_idx]
-    results_df = pd.DataFrame()
-    filename = "/lmc_relevance"
-    for q in range(1, observation_dim+1):
-        print(f"q: {q}")
-        X_trainq = X_train# X_train_sort[:, :q]
-        X_testq = X_test# X_test_sort[:, :q]
-        _, input_dimq = X_trainq.shape
-        print(X_trainq.shape, X_testq.shape)
-        model = lmc_gp(input_dimq, observation_dim, q, num_inducing, X_trainq)
-        
-
-        # for i in range(q):
-        #     model.kernel.kernels[i].variance.assign(params[f".kernel.kernels[{sort_idx[i]}].variance"]) 
-        #     model.kernel.kernels[i].lengthscales.assign(params[f".kernel.kernels[{sort_idx[i]}].lengthscales"].numpy()[sort_idx][:q])
-
-        # model.inducing_variable.inducing_variable.Z.assign(params[f".inducing_variable.inducing_variable.Z"].numpy()[:, sort_idx][:, :i+1])
-        # model.q_mu.assign(params[f".q_mu"].numpy()[:, sort_idx][:, :i+1])
-        # model.q_sqrt.assign(params[f".q_sqrt"].numpy()[sort_idx][:i+1])
-        # model.likelihood.variance.assign(params[".likelihood.variance"])
-
-        model.kernel.W.assign(W_sort[:, :q])    
-        model_name = f"/lmc_gp_q{q}.pkl"
-         
-        try:
-            with open(path + model_name, 'rb') as file:
-                params_ = pickle.load(file)
-            gpf.utilities.multiple_assign(model, params_)
-            print("Model parameters loaded successfully.")
-        
-        except FileNotFoundError:    
-        
-            train_model(model, (X_trainq, Y_train))
-            with open(path + model_name, 'wb') as handle:
-                pickle.dump(gpf.utilities.parameter_dict(model), handle)
-            print("Model trained and parameters saved successfully.")
-
-        nlpd = negative_log_predictive_density(model, X_testq, Y_test)
-        msll = mean_standardized_log_loss(model, X_testq, Y_test, Y_train)
-        crps = continuous_ranked_probability_score_gaussian(model, X_testq, Y_test)
-        mse = mean_squared_error(model, X_testq, Y_test)
-        mae = mean_absolute_error(model, X_testq, Y_test)
 
 
-        results_df.loc[q, "NLPD"] = nlpd.numpy()
-        results_df.loc[q, "MSLL"] = msll
-        results_df.loc[q, "CRPS"] = crps
-        results_df.loc[q, "MSE"] = mse.numpy()
-        results_df.loc[q, "MAE"] = mae.numpy()
-
-        # Save results to Excel file
-        try:
-            with pd.ExcelWriter(path + filename + ".xlsx",
-                            mode='a', if_sheet_exists="replace") as writer:
-                results_df.to_excel(writer)
-        except FileNotFoundError:
-            with pd.ExcelWriter(path + filename + ".xlsx",
-                            mode='w') as writer:
-                results_df.to_excel(writer)
-
-
-def chd_ind_model():
-    # path = "./chd_ind_tests"
-    path = "./chd_ind_lognormal"
-    latent_dim = 2 * observation_dim
-    model = chd_ind_gp(input_dim, latent_dim, observation_dim, num_inducing, X_train)
-    # model_name = f"/chdindgp_Normal_T{order}_M{num_inducing}_softplus.pkl"
-    model_name = f"/chdindgp_LogNormal_T{order}_M{num_inducing}.pkl"
-    dump_load_model(path, model_name, model)
-        
-
-    nlpd = negative_log_predictive_density(model, X_test, Y_test)
-    msll = mean_standardized_log_loss(model, X_test, Y_test, Y_train)
-    crps = continuous_ranked_probability_score_gaussian(model, X_test, Y_test)
-    mse = mean_squared_error(model, X_test, Y_test)
-    mae = mean_absolute_error(model, X_test, Y_test)
-
-    print(f"NLPD: {nlpd}")
-    print(f"MSLL: {msll}")
-    print(f"CRPS: {crps}")
-    print(f"MSE: {mse}")
-    print(f"MAE: {mae}")
-    for task in range(observation_dim):
-        plot_predict_log_density(
-            model,
-            X_test,
-            Y_test,
-            task=task,
-            path=path
-        )
-    # Y_mean, Y_var = model.predict_y(X_test)
-
-    # for task in range(observation_dim):
-    # plot_confidence_interval(
-    # y_mean=Y_mean[:, task],
-    # y_var=Y_var[:, task],
-    # task_name=f"task_{task}",
-    # fname=path+f"/task_{task}",
-    # y_true=Y_test[:, task]
-    # )
-
-
-def chd_corr_model():
-    path = "./chd_tests"
-    # path = "./chd_lmc_gamma"
+def chd_model():
+    path = "./chd_normal"
     filename = "/chd_grid_Q_Normal"
+
     results_df = pd.DataFrame()
     latent_dim = 2 * observation_dim
-    for q in range(36, 2*observation_dim+1):
+    for q in range(1, 2*observation_dim+1):
         # break
         print(f"q: {q}")
         ind_process_dim = q
@@ -986,8 +835,93 @@ def main():
 
     lmc_model()
 
+
+def chained_test():
+
+    # path = './chaned_tests'
+    # filename = '/results_ChdNormal'
+    path = './chd_normal'
+    filename = '/results_Q'
+    results_df = pd.DataFrame()
+
+    np.random.seed(0)
+    tf.random.set_seed(0)
+
+    ct_data = load_datasets()
+    indexes = [2, 9, 11, 12, 13, 14, 16, 17, 19, 21, 3, 6, 0, 5, 7, 8, 10, 1, 4, 18, 22, 20, 15]
+    ct_data = ct_data.iloc[:, indexes]
+    max_data = ct_data.max()
+    norm_data = ct_data / max_data
+    eps = 1e-3
+    norm_data.fillna(eps, inplace=True)
+    norm_data[norm_data <= 0] = eps
+
+    # horizon_list = [1, 2, 3, 4, 5, 6, 7, 14, 21, 30]
+    # for horizon in horizon_list:
+    horizon = 1  
+    order = 1
+    input_width = order
+    label_width = 1
+    shift = horizon
+    window = WindowGenerator(
+        input_width,
+        label_width,
+        shift,
+        norm_data.columns
+    )
+    x, y = window.make_dataset(norm_data)
+    N = len(x)
+    X_train, Y_train = x[0:int(N * 0.9)], y[0:int(N * 0.9)]
+    X_test, Y_test = x[int(N * 0.9):], y[int(N * 0.9):]
+    train_data = (X_train, Y_train)
+    _, input_dim = X_train.shape
+    observation_dim = Y_train.shape[1]
+    num_inducing = 64
+    latent_dim = 2 * observation_dim
+    # ind_process_dim = 17
+    for q in range(1, 2*observation_dim + 1):
+        # model = lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train)
+        # model_name = f"/lmcgp_T{order}_M{num_inducing}_Q{ind_process_dim}_H{horizon}.pkl"
+        ind_process_dim = q  
+        model = chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train)
+        model_name = f"/ChdNormal_T{order}_M{num_inducing}_Q{ind_process_dim}_H{horizon}.pkl"
+
+        dump_load_model(path, model_name, model, train_data)
+
+        nlpd = negative_log_predictive_density(model, X_test, Y_test)
+        msll = mean_standardized_log_loss(model, X_test, Y_test, Y_train)
+        crps = continuous_ranked_probability_score_gaussian(model, X_test, Y_test)
+        mse = mean_squared_error(model, X_test, Y_test)
+        mae = mean_absolute_error(model, X_test, Y_test)
+
+        results_df.loc[q, "NLPD"] = nlpd.numpy()
+        results_df.loc[q, "MSLL"] = msll
+        results_df.loc[q, "CRPS"] = crps
+        results_df.loc[q, "MSE"] = mse.numpy()
+        results_df.loc[q, "MAE"] = mae.numpy()
+
+       # Save results to Excel file
+        try:
+            with pd.ExcelWriter(path + filename + ".xlsx",
+                            mode='a', if_sheet_exists="replace") as writer:
+                results_df.to_excel(writer)
+        except FileNotFoundError:
+            with pd.ExcelWriter(path + filename + ".xlsx",
+                            mode='w') as writer:
+                results_df.to_excel(writer)
+
+
+
+
+
+
+
+
+
+
 if __name__ == "__main__":
     # train_lmc_by_horizon()
     # main()
-    plot_confidence_interval()
+    # plot_confidence_interval()
+    chained_test()
 
