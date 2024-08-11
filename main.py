@@ -911,6 +911,18 @@ def chained_test():
                 results_df.to_excel(writer)
 
 
+    df = pd.read_excel(path + filename + ".xlsx")
+    metrics = ["MSLL", "CRPS", "MSE", "NLPD"]
+
+    for metric in metrics:
+        plt.figure(figsize=(16, 8))
+        plt.plot(df.iloc[:, 0], df[metric], marker='o')
+        plt.xlabel("Number of Independent GPs (Q)")
+        plt.ylabel(f"{metric} Value")
+        plt.grid(True)
+        tikz.save(path + f"/{metric}_gs.tex")
+        plt.savefig(path + f"/{metric}_gs.png")
+        plt.close()
 
 
 
