@@ -1,0 +1,40 @@
+% This file was created with tikzplotlib v0.10.1.
+\begin{tikzpicture}
+
+\definecolor{darkgray176}{RGB}{176,176,176}
+\definecolor{darkorange25512714}{RGB}{255,127,14}
+\definecolor{steelblue31119180}{RGB}{31,119,180}
+
+\begin{axis}[
+tick align=outside,
+tick pos=left,
+x grid style={darkgray176},
+xmin=-0.89, xmax=31.89,
+xtick style={color=black},
+y grid style={darkgray176},
+ymin=-39.0575239116442, ymax=0,
+ytick style={color=black}
+]
+\draw[draw=none,fill=steelblue31119180] (axis cs:0.6,0) rectangle (axis cs:1.4,-32.745747598516);
+\draw[draw=none,fill=steelblue31119180] (axis cs:1.6,0) rectangle (axis cs:2.4,-30.2613167702501);
+\draw[draw=none,fill=steelblue31119180] (axis cs:2.6,0) rectangle (axis cs:3.4,-26.0674625485646);
+\draw[draw=none,fill=steelblue31119180] (axis cs:3.6,0) rectangle (axis cs:4.4,-24.7284934760365);
+\draw[draw=none,fill=steelblue31119180] (axis cs:4.6,0) rectangle (axis cs:5.4,-25.8667874240686);
+\draw[draw=none,fill=steelblue31119180] (axis cs:5.6,0) rectangle (axis cs:6.4,-25.5241222520839);
+\draw[draw=none,fill=steelblue31119180] (axis cs:6.6,0) rectangle (axis cs:7.4,-24.4733528784515);
+\draw[draw=none,fill=steelblue31119180] (axis cs:13.6,0) rectangle (axis cs:14.4,-23.7189187161835);
+\draw[draw=none,fill=steelblue31119180] (axis cs:20.6,0) rectangle (axis cs:21.4,-24.6262096068829);
+\draw[draw=none,fill=steelblue31119180] (axis cs:29.6,0) rectangle (axis cs:30.4,-24.551868432483);
+\draw[draw=none,fill=darkorange25512714] (axis cs:0.6,0) rectangle (axis cs:1.4,-37.1976418206135);
+\draw[draw=none,fill=darkorange25512714] (axis cs:1.6,0) rectangle (axis cs:2.4,-32.57009392034);
+\draw[draw=none,fill=darkorange25512714] (axis cs:2.6,0) rectangle (axis cs:3.4,-31.1545299186111);
+\draw[draw=none,fill=darkorange25512714] (axis cs:3.6,0) rectangle (axis cs:4.4,-30.7281603098309);
+\draw[draw=none,fill=darkorange25512714] (axis cs:4.6,0) rectangle (axis cs:5.4,-28.7134159542646);
+\draw[draw=none,fill=darkorange25512714] (axis cs:5.6,0) rectangle (axis cs:6.4,-29.5248659053096);
+\draw[draw=none,fill=darkorange25512714] (axis cs:6.6,0) rectangle (axis cs:7.4,-29.6611175531187);
+\draw[draw=none,fill=darkorange25512714] (axis cs:13.6,0) rectangle (axis cs:14.4,-28.9486441224176);
+\draw[draw=none,fill=darkorange25512714] (axis cs:20.6,0) rectangle (axis cs:21.4,-27.8247484458317);
+\draw[draw=none,fill=darkorange25512714] (axis cs:29.6,0) rectangle (axis cs:30.4,-26.5153492416896);
+\end{axis}
+
+\end{tikzpicture}
