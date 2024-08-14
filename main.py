@@ -1,4 +1,4 @@
-#!/home/jumsow/Documents/virtual_environments/gpvenv/bin/python3 
+#!/home/usuario/Documents/virtual_environments/gpsvenv/bin/python3 
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -74,7 +74,7 @@ def plot_predict_log_density(
     x_mesh, y_mesh = np.meshgrid(time_index, line_space)
 
     fig, ax = plt.subplots(1, 1, figsize=(16, 8))
-    cs = ax.contourf(x_mesh, y_mesh, np.log10(predictive_density.T+1e-12))
+    cs = ax.contourf(x_mesh, y_mesh, predictive_density.T, vmin=0, vmax=20)
     ax.scatter(time_index, Y[:, task], color="k", s=10, label="Observaciones")
 
     plt.colorbar(cs, ax=ax)
@@ -268,30 +268,30 @@ def normalize_dataset(dataframe: pd.DataFrame) -> tuple:
 
 def plot_confidence_interval():
     # Set seed for NumPy
-    np.random.seed(1966)
+    np.random.seed(0)
     # Set seed for GPflow
-    tf.random.set_seed(1966)
-    tf.keras.mixed_precision.set_global_policy('mixed_bfloat16')
+    tf.random.set_seed(0)
 
     ct_data = load_datasets()
     indexes = [2, 9, 11, 12, 13, 14, 16, 17, 19, 21, 3, 6, 0, 5, 7, 8, 10, 1, 4, 18, 22, 20, 15]
     ct_data = ct_data.iloc[:, indexes]
     
-    norm_data, data_mean, data_std = normalize_dataset(ct_data)
-    data_mean = data_mean.values
-    data_std = data_std.values
+    # norm_data, data_mean, data_std = normalize_dataset(ct_data)
+    # data_mean = data_mean.values
+    # data_std = data_std.values
     
-    # max_data = ct_data.max()
-    # norm_data = ct_data / max_data
-    # eps = 1e-3
-    # norm_data.fillna(eps, inplace=True)
-    # norm_data[norm_data <= 0] = eps
+    max_data = ct_data.max()
+    norm_data = ct_data / max_data
+    eps = 1e-3
+    norm_data.fillna(eps, inplace=True)
+    norm_data[norm_data <= 0] = eps
 
     # Create windows
+    horizon = 1
     order = 1
     input_width = order
     label_width = 1
-    shift = 1
+    shift = horizon
     window = WindowGenerator(
         input_width,
         label_width,
@@ -303,35 +303,62 @@ def plot_confidence_interval():
     N = len(x)
     X_train, Y_train = x[0:int(N * 0.9)], y[0:int(N * 0.9)]
     X_test, Y_test = x[int(N * 0.9):], y[int(N * 0.9):]
-    train_data = (X_test, Y_test)
+    train_data = (X_train, Y_train)
 
     _, input_dim = X_train.shape
     observation_dim = Y_train.shape[1]
     num_inducing = 64
 
-    path = "./lmc_tests"
-    filename = "/lmc_grid_Q"
+    path = "./chd_gamma"
     results_df = pd.DataFrame()
-    ind_process_dim = 17
-    model = lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train)
-    model_name = f"/lmcgp_Normal_T{order}_M{num_inducing}_Q{ind_process_dim}.pkl"    
+    ind_process_dim = 26
+    latent_dim = 2 * observation_dim
+    model = chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train)
+    model_name = f"/ChdGamma_T{order}_M{num_inducing}_Q{ind_process_dim}_H{horizon}.pkl"
     dump_load_model(path, model_name, model, train_data)
     y_mean, y_var = model.predict_y(X_test)
-
-    y_mean = data_std * y_mean + data_mean
-    y_var = data_std ** 2 * y_var
     
-    Y_test = data_std * Y_test + data_mean
+    max_data = max_data.values
+    y_mean = max_data * y_mean
+    y_var = max_data ** 2 * y_var
+    Ntest = X_test.shape[0]
+    # Y_test = max_data * Y_test
+    
+
+
+    num_samples = 25
+    Fsamples = model.predict_f_samples(X_test, num_samples)
+
+# Transform samples using the likelihood parameters
+# num_samples x time_index x observation_dim
+    alpha = model.likelihood.param1_transform(Fsamples[..., ::2])
+    beta = model.likelihood.param1_transform(Fsamples[..., 1::2])
 
     for task in range(observation_dim):
-        output_name = norm_data.columns[task]
-        y_lower = y_mean[:, task] - 1.96 * np.sqrt(y_var[:, task])
-        y_upper = y_mean[:, task] + 1.96 * np.sqrt(y_var[:, task])
+        plot_predict_log_density(model, X_test, Y_test, task, path)
+        Ypred_samples = np.zeros(shape=(25, Ntest))
 
-        # print(np.sqrt(model_ind.kernel.kernels[task].variance))
+        for i in range(num_samples):
+            for j in range(Ntest):
+                dist = model.likelihood.distribution_class(
+                    alpha[i, j, task],
+                    beta[i, j, task],
+                    force_probs_to_zero_outside_support=True,
+                )
+                # Sample from the distribution to generate predictive samples
+                Ypred_samples[:, j] += dist.sample(25).numpy()
+
+    # Calculate percentiles for confidence intervals
+        Ypred_samples *= max_data[task] / num_samples
+        y_lower = np.percentile(Ypred_samples, 2.5, axis=0)
+        y_upper = np.percentile(Ypred_samples, 97.5, axis=0)
+        print(y_upper.max())
+
+        output_name = norm_data.columns[task]
+
         time_range = range(len(Y_test))
-        fig, ax = plt.subplots(figsize=(15, 8))
-        ax.plot(time_range, Y_test[:, task], 'r.-')
+        fig, ax = plt.subplots(figsize=(16, 8))
+        ax.plot(time_range, Y_test[:, task]*max_data[task], 'r.-')
         ax.plot(time_range, y_mean[:, task], 'b.-')
 
         # Shade in confidence
@@ -344,10 +371,40 @@ def plot_confidence_interval():
         ax.set_title(
             f'Task {output_name}')
         ax.set_xmargin(0.01)
-        plt.savefig(path + f"/lmc_forecasting_{output_name}.png")
-        tikz.save(path + f"/lmc_forecasting_{output_name}.tex")
+        plt.savefig(path + f"/chd_gamma_forecasting_{output_name}.png")
+        tikz.save(path + f"/chd_gamma_forecasting_{output_name}.tex")
         plt.close()
 
+
+
+
+
+
+    # for task in range(observation_dim):
+    #     output_name = norm_data.columns[task]
+    #     y_lower = y_mean[:, task] - 1.96 * np.sqrt(y_var[:, task])
+    #     y_upper = y_mean[:, task] + 1.96 * np.sqrt(y_var[:, task])
+    #
+    #     # print(np.sqrt(model_ind.kernel.kernels[task].variance))
+    #     time_range = range(len(Y_test))
+    #     fig, ax = plt.subplots(figsize=(15, 8))
+    #     ax.plot(time_range, Y_test[:, task], 'r.-')
+    #     ax.plot(time_range, y_mean[:, task], 'b.-')
+    #
+    #     # Shade in confidence
+    #     ax.fill_between(time_range,
+    #                     y_lower,
+    #                     y_upper,
+    #                     alpha=0.5,
+    #                     color='b')
+    #     # Shade in confidence
+    #     ax.set_title(
+    #         f'Task {output_name}')
+    #     ax.set_xmargin(0.01)
+    #     plt.savefig(path + f"/chd_normal_forecasting_{output_name}.png")
+    #     tikz.save(path + f"/chd_normal_forecasting_{output_name}.tex")
+    #     plt.close()
+    #
 
 def ind_gp(input_dim, observation_dim, num_inducing, X_train):
     # Create a list of base kernels for the Linear Coregionalization model
@@ -423,7 +480,7 @@ def chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_indu
     # * 0.01 * np.log(latent_dim)*np.sqrt(ind_process_dim)
     # W = np.random.uniform(0.01, np.log(latent_dim)*np.sqrt(ind_process_dim), size=(latent_dim, ind_process_dim))
     
-    W = np.random.randn(latent_dim, ind_process_dim) * 0.01
+    W = np.random.randn(latent_dim, ind_process_dim) * 0.005
 
     kernel = gpf.kernels.LinearCoregionalization(
         kern_list, W=W
@@ -436,14 +493,14 @@ def chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_indu
 
 
     q_mu = np.zeros((num_inducing, ind_process_dim))
-    q_sqrt = np.repeat(np.eye(num_inducing)[None, ...], ind_process_dim, axis=0) * 0.1
+    q_sqrt = np.repeat(np.eye(num_inducing)[None, ...], ind_process_dim, axis=0) * 0.01
     
     likelihood = MOChainedLikelihoodMC(
             input_dim=input_dim,
             latent_dim=latent_dim,
             observation_dim=observation_dim,
-            distribution_class=tfp.distributions.Normal,
-            param1_transform=lambda x: x,
+            distribution_class=tfp.distributions.Gamma,
+            param1_transform=tf.math.softplus,
             param2_transform=tf.math.softplus
         )
     
@@ -840,7 +897,7 @@ def chained_test():
 
     # path = './chaned_tests'
     # filename = '/results_ChdNormal'
-    path = './chd_normal'
+    path = './chd_gamma'
     filename = '/results_Q'
     results_df = pd.DataFrame()
 
@@ -884,7 +941,7 @@ def chained_test():
         # model_name = f"/lmcgp_T{order}_M{num_inducing}_Q{ind_process_dim}_H{horizon}.pkl"
         ind_process_dim = q  
         model = chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train)
-        model_name = f"/ChdNormal_T{order}_M{num_inducing}_Q{ind_process_dim}_H{horizon}.pkl"
+        model_name = f"/ChdGamma_T{order}_M{num_inducing}_Q{ind_process_dim}_H{horizon}.pkl"
 
         dump_load_model(path, model_name, model, train_data)
 
@@ -925,15 +982,120 @@ def chained_test():
         plt.close()
 
 
+def chained_test_horizons():
+
+    path = './chaned_tests'
+    filename = '/results_ChdNormal'
+    # filename = '/results_LMC'
+    results_df = pd.DataFrame()
+
+    np.random.seed(0)
+    tf.random.set_seed(0)
+
+    ct_data = load_datasets()
+    indexes = [2, 9, 11, 12, 13, 14, 16, 17, 19, 21, 3, 6, 0, 5, 7, 8, 10, 1, 4, 18, 22, 20, 15]
+    ct_data = ct_data.iloc[:, indexes]
+    max_data = ct_data.max()
+    norm_data = ct_data / max_data
+    eps = 1e-3
+    norm_data.fillna(eps, inplace=True)
+    norm_data[norm_data <= 0] = eps
+
+    horizon_list = [1, 2, 3, 4, 5, 6, 7, 14, 21, 30]
+    for horizon in horizon_list:
+        order = 1
+        input_width = order
+        label_width = 1
+        shift = horizon
+        window = WindowGenerator(
+            input_width,
+            label_width,
+            shift,
+            norm_data.columns
+        )
+        x, y = window.make_dataset(norm_data)
+        N = len(x)
+        X_train, Y_train = x[0:int(N * 0.9)], y[0:int(N * 0.9)]
+        X_test, Y_test = x[int(N * 0.9):], y[int(N * 0.9):]
+        train_data = (X_train, Y_train)
+        _, input_dim = X_train.shape
+        observation_dim = Y_train.shape[1]
+        num_inducing = 64
+        latent_dim = 2 * observation_dim
+        ind_process_dim = 15
+        # model = lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train)
+        # model_name = f"/lmcgp_T{order}_M{num_inducing}_Q{ind_process_dim}_H{horizon}.pkl"
+        model = chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train)
+        model_name = f"/ChdNormal_T{order}_M{num_inducing}_Q{ind_process_dim}_H{horizon}.pkl"
+
+        # ind_process_dim = q  
+        # model = chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train)
+        # model_name = f"/ChdNormal_T{order}_M{num_inducing}_Q{ind_process_dim}_H{horizon}.pkl"
+
+        dump_load_model(path, model_name, model, train_data)
+
+        nlpd = negative_log_predictive_density(model, X_test, Y_test)
+        msll = mean_standardized_log_loss(model, X_test, Y_test, Y_train)
+        crps = continuous_ranked_probability_score_gaussian(model, X_test, Y_test)
+        mse = mean_squared_error(model, X_test, Y_test)
+        mae = mean_absolute_error(model, X_test, Y_test)
+
+        results_df.loc[horizon, "NLPD"] = nlpd.numpy()
+        results_df.loc[horizon, "MSLL"] = msll
+        results_df.loc[horizon, "CRPS"] = crps
+        results_df.loc[horizon, "MSE"] = mse.numpy()
+        results_df.loc[horizon, "MAE"] = mae.numpy()
+
+       # Save results to Excel file
+        try:
+            with pd.ExcelWriter(path + filename + ".xlsx",
+                            mode='a', if_sheet_exists="replace") as writer:
+                results_df.to_excel(writer)
+        except FileNotFoundError:
+            with pd.ExcelWriter(path + filename + ".xlsx",
+                            mode='w') as writer:
+                results_df.to_excel(writer)
 
 
 
 
+
+def plot_metrics_bar(): 
+    path = './chaned_tests'
+    filename_chd = '/results_ChdNormal'
+    filename_lmc = '/results_LMC'
+    
+    # Read the results from Excel files
+    results_chd = pd.read_excel(path + filename_chd + ".xlsx", index_col=0)
+    results_lmc = pd.read_excel(path + filename_lmc + ".xlsx", index_col=0)
+
+    metrics = ["NLPD", "MSLL", "CRPS", "MSE"]
+    horizons = [1, 2, 3, 4, 5, 6, 7, 14, 21, 30]
+    
+    for metric in metrics:
+        plt.figure(figsize=(16, 8))
+        
+        bar_width = 0.25
+        index = range(len(horizons))
+
+        plt.bar([i - bar_width for i in index], results_lmc[metric], width=bar_width, label='LMC', color='blue')
+        plt.bar(index, results_chd[metric], width=bar_width, label='ChdNormal', color='red')
+
+        plt.xlabel('Horizon')
+        plt.ylabel(metric)
+        plt.title(f'{metric} Comparison Across Horizons')
+        plt.xticks(index, horizons)
+
+        plt.savefig(path + f"/{metric}_peformance_chdnormal.png")
+        tikz.save(path + f"/{metric}_peformance_chdnormal.tex")
+
+        plt.close()
 
 
 if __name__ == "__main__":
     # train_lmc_by_horizon()
     # main()
-    # plot_confidence_interval()
-    chained_test()
-
+    plot_confidence_interval()
+    # chained_test()
+    # chained_test_horizons()
+    # plot_metrics_bar()
