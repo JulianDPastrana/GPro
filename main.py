@@ -319,14 +319,14 @@ def plot_confidence_interval():
     y_mean, y_var = model.predict_y(X_test)
     
     max_data = max_data.values
-    y_mean = max_data * y_mean
-    y_var = max_data ** 2 * y_var
+    y_mean *= max_data
+    y_var *= max_data ** 2
     Ntest = X_test.shape[0]
-    # Y_test = max_data * Y_test
+    Y_test *= max_data
     
 
 
-    num_samples = 25
+    num_samples = 5000
     Fsamples = model.predict_f_samples(X_test, num_samples)
 
 # Transform samples using the likelihood parameters
@@ -334,37 +334,27 @@ def plot_confidence_interval():
     alpha = model.likelihood.param1_transform(Fsamples[..., ::2])
     beta = model.likelihood.param1_transform(Fsamples[..., 1::2])
 
+    dist = model.likelihood.distribution_class(alpha, beta)
+    # Samples x time x outputs
+    Ypred_samples = dist.sample().numpy() * max_data
+    y_lower = np.percentile(Ypred_samples, 2.5, axis=0)
+    y_median = np.percentile(Ypred_samples, 50, axis=0)
+    y_upper = np.percentile(Ypred_samples, 97.5, axis=0)
+
     for task in range(observation_dim):
-        plot_predict_log_density(model, X_test, Y_test, task, path)
-        Ypred_samples = np.zeros(shape=(25, Ntest))
-
-        for i in range(num_samples):
-            for j in range(Ntest):
-                dist = model.likelihood.distribution_class(
-                    alpha[i, j, task],
-                    beta[i, j, task],
-                    force_probs_to_zero_outside_support=True,
-                )
-                # Sample from the distribution to generate predictive samples
-                Ypred_samples[:, j] += dist.sample(25).numpy()
-
-    # Calculate percentiles for confidence intervals
-        Ypred_samples *= max_data[task] / num_samples
-        y_lower = np.percentile(Ypred_samples, 2.5, axis=0)
-        y_upper = np.percentile(Ypred_samples, 97.5, axis=0)
-        print(y_upper.max())
-
+        print(f"task: {task}")
         output_name = norm_data.columns[task]
 
         time_range = range(len(Y_test))
         fig, ax = plt.subplots(figsize=(16, 8))
-        ax.plot(time_range, Y_test[:, task]*max_data[task], 'r.-')
+        ax.plot(time_range, Y_test[:, task], 'r.-')
         ax.plot(time_range, y_mean[:, task], 'b.-')
+        ax.plot(time_range, y_median[:, task], 'k-')
 
         # Shade in confidence
         ax.fill_between(time_range,
-                        y_lower,
-                        y_upper,
+                        y_lower[:, task],
+                        y_upper[:, task],
                         alpha=0.5,
                         color='b')
         # Shade in confidence
