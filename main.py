@@ -974,8 +974,8 @@ def chained_test():
 
 def chained_test_horizons():
 
-    path = './chaned_tests'
-    filename = '/results_ChdNormal'
+    path = './chd_gamma'
+    filename = '/results_ChdGamma'
     # filename = '/results_LMC'
     results_df = pd.DataFrame()
 
@@ -1012,11 +1012,11 @@ def chained_test_horizons():
         observation_dim = Y_train.shape[1]
         num_inducing = 64
         latent_dim = 2 * observation_dim
-        ind_process_dim = 15
+        ind_process_dim = 26
         # model = lmc_gp(input_dim, observation_dim, ind_process_dim, num_inducing, X_train)
         # model_name = f"/lmcgp_T{order}_M{num_inducing}_Q{ind_process_dim}_H{horizon}.pkl"
         model = chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train)
-        model_name = f"/ChdNormal_T{order}_M{num_inducing}_Q{ind_process_dim}_H{horizon}.pkl"
+        model_name = f"/ChdGamma_T{order}_M{num_inducing}_Q{ind_process_dim}_H{horizon}.pkl"
 
         # ind_process_dim = q  
         # model = chd_lmc_gp(input_dim, latent_dim, observation_dim, ind_process_dim, num_inducing, X_train)
@@ -1051,13 +1051,13 @@ def chained_test_horizons():
 
 
 def plot_metrics_bar(): 
-    path = './chaned_tests'
-    filename_chd = '/results_ChdNormal'
-    filename_lmc = '/results_LMC'
+    path = './chd_gamma'
+    filename_gamma = '/results_ChdGamma'
+    filename_normal = '/results_ChdNormal'
     
     # Read the results from Excel files
-    results_chd = pd.read_excel(path + filename_chd + ".xlsx", index_col=0)
-    results_lmc = pd.read_excel(path + filename_lmc + ".xlsx", index_col=0)
+    results_normal = pd.read_excel(path + filename_normal + ".xlsx", index_col=0)
+    results_gamma = pd.read_excel(path + filename_gamma + ".xlsx", index_col=0)
 
     metrics = ["NLPD", "MSLL", "CRPS", "MSE"]
     horizons = [1, 2, 3, 4, 5, 6, 7, 14, 21, 30]
@@ -1068,24 +1068,24 @@ def plot_metrics_bar():
         bar_width = 0.25
         index = range(len(horizons))
 
-        plt.bar([i - bar_width for i in index], results_lmc[metric], width=bar_width, label='LMC', color='blue')
-        plt.bar(index, results_chd[metric], width=bar_width, label='ChdNormal', color='red')
+        plt.bar([i - bar_width for i in index], results_normal[metric], width=bar_width, label='ChdNormal', color='blue')
+        plt.bar(index, results_gamma[metric], width=bar_width, label='ChdGamma', color='red')
 
         plt.xlabel('Horizon')
         plt.ylabel(metric)
         plt.title(f'{metric} Comparison Across Horizons')
         plt.xticks(index, horizons)
 
-        plt.savefig(path + f"/{metric}_peformance_chdnormal.png")
-        tikz.save(path + f"/{metric}_peformance_chdnormal.tex")
+        plt.savefig(path + f"/{metric}_peformance_chdgamma.png")
+        tikz.save(path + f"/{metric}_peformance_chdgamma.tex")
 
         plt.close()
 
 
-if __name__ == "__main__":
-    # train_lmc_by_horizon()
-    # main()
-    plot_confidence_interval()
+
+
+ if __name__ == "__main__":
+    # plot_confidence_interval()
     # chained_test()
     # chained_test_horizons()
-    # plot_metrics_bar()
+    plot_metrics_bar()
